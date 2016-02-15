@@ -33,9 +33,6 @@ func init() {
 	CurrentWorkingDirectory = cwd
 }
 
-// Update if package is moved or renamed.
-// const CurrentImportPath = "git.vieth.io/pkg/buildutil"
-
 // Copied from go/build/build_test.go
 func TestMatch(t *testing.T) {
 	ctxt := &build.Default
