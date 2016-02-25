@@ -14,6 +14,8 @@ import (
 	"testing"
 )
 
+// The following tests were copied from the Go standard library.
+
 var (
 	CurrentImportPath       string
 	CurrentWorkingDirectory string
@@ -250,4 +252,59 @@ func shouldBuild(content []byte) bool {
 	if !reflect.DeepEqual(m, want2) {
 		t.Errorf("shoudBuild(file2) tags = %v, want %v", m, want2)
 	}
+}
+
+// The following tests are buildutil specific.
+
+func TestGoodOSArchFile(t *testing.T) {
+	ctxt := &build.Default
+	what := "default"
+	matchFn := func(tag string, want map[string]bool) {
+		m := make(map[string]bool)
+		if !GoodOSArchFile(ctxt, tag, m) {
+			t.Errorf("%s GoodOSArchFile should match %s, does not", what, tag)
+		}
+		if !reflect.DeepEqual(m, want) {
+			t.Errorf("%s tags = %v, want %v", tag, m, want)
+		}
+	}
+	nomatch := func(tag string, want map[string]bool) {
+		m := make(map[string]bool)
+		if GoodOSArchFile(ctxt, tag, m) {
+			t.Errorf("%s GoodOSArchFile should NOT match %s, does", what, tag)
+		}
+		if !reflect.DeepEqual(m, want) {
+			t.Errorf("%s tags = %v, want %v", tag, m, want)
+		}
+	}
+	badOS := "windows"
+	if badOS == runtime.GOOS {
+		badOS = "linux"
+	}
+	badArch := "386"
+	if badArch == runtime.GOARCH {
+		badArch = "amd64"
+	}
+	matchFn("x_"+runtime.GOOS+".go", map[string]bool{runtime.GOOS: true})
+	matchFn("x_"+runtime.GOARCH+".go", map[string]bool{runtime.GOARCH: true})
+	matchFn("x_"+runtime.GOOS+"_"+runtime.GOARCH+".go", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true})
+
+	tempPath := func(s string) string {
+		return filepath.Join(os.TempDir(), s)
+	}
+	matchFn(tempPath("x_"+runtime.GOOS+".go"), map[string]bool{runtime.GOOS: true})
+	matchFn(tempPath("x_"+runtime.GOARCH+".go"), map[string]bool{runtime.GOARCH: true})
+	matchFn(tempPath("x_"+runtime.GOOS+"_"+runtime.GOARCH+".go"), map[string]bool{runtime.GOOS: true, runtime.GOARCH: true})
+
+	what = "modified"
+	nomatch("x_"+badOS+"_"+runtime.GOARCH+".go", map[string]bool{badOS: true, runtime.GOARCH: true})
+	nomatch("x_"+runtime.GOOS+"_"+badArch+".go", map[string]bool{runtime.GOOS: true, badArch: true})
+
+	// Test that we only analyze the base path element.
+	p := filepath.Join("x_"+badArch+"_"+runtime.GOARCH+".go", "x_"+runtime.GOOS+"_"+runtime.GOARCH+".go")
+	matchFn(p, map[string]bool{runtime.GOOS: true, runtime.GOARCH: true})
+
+	what = "invalid tag"
+	matchFn(runtime.GOOS+".go", map[string]bool{})
+	matchFn(runtime.GOARCH+".go", map[string]bool{})
 }

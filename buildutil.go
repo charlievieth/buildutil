@@ -8,30 +8,33 @@ package buildutil
 import (
 	"bytes"
 	"go/build"
-	pathpkg "path"
 	"path/filepath"
 	"strings"
 	"unicode"
 )
 
-func GoodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) bool {
-	return goodOSArchFile(ctxt, name, allTags)
-}
-
 var defaultContext = build.Default
 
-func FileTags(name string, allTags map[string]bool) {
-	if allTags != nil {
-		name = pathpkg.Base(filepath.Clean(name))
-		goodOSArchFile(&defaultContext, name, allTags)
-	}
+// BuildTags adds and build tags found in name or content to allTags.
+func BuildTags(name string, content []byte, allTags map[string]bool) {
+	goodOSArchFile(&defaultContext, name, allTags)
+	shouldBuild(&defaultContext, content, allTags)
 }
 
-// BuildTagsadds any build tags found in content to allTags.
-func BuildTags(content []byte, allTags map[string]bool) {
-	if allTags != nil {
-		shouldBuild(&defaultContext, content, allTags)
-	}
+// GoodOSArchFile returns false if the name contains a $GOOS or $GOARCH
+// suffix which does not match the build Context.
+// The recognized name formats are:
+//
+//     name_$(GOOS).*
+//     name_$(GOARCH).*
+//     name_$(GOOS)_$(GOARCH).*
+//     name_$(GOOS)_test.*
+//     name_$(GOARCH)_test.*
+//     name_$(GOOS)_$(GOARCH)_test.*
+//
+// An exception: if GOOS=android, then files with GOOS=linux are also matched.
+func GoodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) bool {
+	return goodOSArchFile(ctxt, filepath.Base(name), allTags)
 }
 
 // ShouldBuild reports whether it is okay to use this file, and adds any build
