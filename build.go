@@ -28,10 +28,7 @@ import "go/build"
 // *Package containing partial information.
 //
 func Import(bc *build.Context, path string, srcDir string, mode build.ImportMode) (*build.Package, error) {
-	if bc != nil {
-		return bc.Import(path, srcDir, mode)
-	}
-	return build.Default.Import(path, srcDir, mode)
+	return bc.Import(path, srcDir, mode)
 }
 
 // ImportDir is like Import but processes the Go package found in
