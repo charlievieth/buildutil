@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"go/build"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode"
 )
@@ -183,4 +184,28 @@ func match(ctxt *build.Context, name string, allTags map[string]bool) bool {
 	}
 
 	return false
+}
+
+var knownOSList []string
+var knownArchList []string
+
+func init() {
+	knownOSList = strings.Fields(goosList)
+	knownArchList = strings.Fields(goarchList)
+	sort.Strings(knownOSList)
+	sort.Strings(knownArchList)
+}
+
+// ArchList returns the known operating system values, sorted.
+func KnownOSList() []string {
+	s := make([]string, len(knownOSList))
+	copy(s, knownOSList)
+	return s
+}
+
+// ArchList returns the known architecture values, sorted.
+func KnownArchList() []string {
+	s := make([]string, len(knownArchList))
+	copy(s, knownArchList)
+	return s
 }
