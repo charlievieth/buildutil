@@ -8,6 +8,8 @@ package buildutil
 import (
 	"bytes"
 	"go/build"
+	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -42,6 +44,55 @@ func GoodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) b
 // tags to allTags.
 func ShouldBuild(ctxt *build.Context, content []byte, allTags map[string]bool) bool {
 	return shouldBuild(ctxt, content, allTags)
+}
+
+func Include(ctxt *build.Context, path string) bool {
+	if !goodOSArchFile(ctxt, filepath.Base(path), nil) {
+		return false
+	}
+	var f io.ReadCloser
+	var err error
+	if fn := ctxt.OpenFile; fn != nil {
+		f, err = fn(path)
+	} else {
+		f, err = os.Open(path)
+	}
+	if err != nil {
+		return false
+	}
+	data, err := readImports(f, true, nil)
+	f.Close()
+	if err != nil {
+		return false
+	}
+	return shouldBuild(ctxt, data, nil)
+}
+
+// TODO (CEV): rename
+func ShortImport(ctxt *build.Context, path string) (string, bool) {
+	if !goodOSArchFile(ctxt, filepath.Base(path), nil) {
+		return "", false
+	}
+	var f io.ReadCloser
+	var err error
+	if fn := ctxt.OpenFile; fn != nil {
+		f, err = fn(path)
+	} else {
+		f, err = os.Open(path)
+	}
+	if err != nil {
+		return "", false
+	}
+	data, err := readImports(f, true, nil)
+	f.Close()
+	if err != nil {
+		return "", false
+	}
+	if !shouldBuild(ctxt, data, nil) {
+		return "", false
+	}
+	name, err := readPackageName(data)
+	return name, err == nil
 }
 
 var slashslash = []byte("//")

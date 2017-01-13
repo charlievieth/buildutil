@@ -25,7 +25,7 @@ func TestImportVendor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot find vendored %s from %s directory: %v", path, srcDir, err)
 	}
-	want := filepath.Join(CurrentImportPath, "vendor", path)
+	want := filepath.ToSlash(filepath.Join(CurrentImportPath, "vendor", path))
 	if p.ImportPath != want {
 		t.Fatalf("Import succeeded but found %q, want %q", p.ImportPath, want)
 	}
