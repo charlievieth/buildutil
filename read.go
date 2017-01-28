@@ -6,6 +6,7 @@ package buildutil
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io"
 )
@@ -243,4 +244,63 @@ func readImports(f io.Reader, reportSyntaxError bool, imports *[]string) ([]byte
 	}
 
 	return r.buf, r.err
+}
+
+func isSpace(c rune) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
+func readPackageName(b []byte) (string, error) {
+	const minLen = len("package _\n")
+
+	b = bytes.TrimLeftFunc(b, isSpace)
+
+Loop:
+	for len(b) >= minLen {
+		c := b[0]
+		switch c {
+		case ' ', '\t', '\n', '\r', '\f', ';':
+			b = b[1:]
+		case '/':
+			b = b[1:]
+			c = b[0]
+			switch c {
+			case '/':
+				n := bytes.IndexByte(b, '\n')
+				if n == -1 || n == len(b)-1 {
+					return "", errSyntax
+				}
+				b = b[n+1:]
+			case '*':
+				n := bytes.Index(b, []byte("*/"))
+				if n == -1 || n == len(b)-2 {
+					return "", errSyntax
+				}
+				b = b[n+2:]
+			default:
+				return "", errSyntax
+			}
+		default:
+			break Loop
+		}
+	}
+
+	if len(b) >= minLen && bytes.HasPrefix(b, []byte("package")) {
+		b = b[len("package"):]
+		if !isSpace(rune(b[0])) {
+			return "", errSyntax
+		}
+		for len(b) > 0 && isSpace(rune(b[0])) {
+			b = b[1:]
+		}
+		i := 0
+		for ; i < len(b) && isIdent(b[i]); i++ {
+		}
+		if i == 0 || i == len(b) {
+			return "", errSyntax
+		}
+		return string(b[:i]), nil
+	}
+
+	return "", errSyntax
 }

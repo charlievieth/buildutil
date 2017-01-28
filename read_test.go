@@ -224,3 +224,96 @@ func TestReadFailuresIgnored(t *testing.T) {
 	}
 	testRead(t, tests, func(r io.Reader) ([]byte, error) { return readImports(r, false, nil) })
 }
+
+var packageNameTests = []struct {
+	src  string
+	name string
+	err  error
+}{
+	{
+		src:  "package foo\n",
+		name: "foo",
+		err:  nil,
+	},
+	{
+		src:  "// +build !windows\npackage foo\n",
+		name: "foo",
+		err:  nil,
+	},
+	{
+		src:  "// +build !windows\npackagee extra_e\n",
+		name: "",
+		err:  errSyntax,
+	},
+	{
+		src:  "/* foo */ // +build !windows\npackage foo\n",
+		name: "foo",
+		err:  nil,
+	},
+	{
+		src: `// Copyright 2011 The Go Authors.  All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// +build !go1.5
+
+// For all Go versions other than 1.5 use the Import and ImportDir functions
+// declared in go/build.
+
+package buildutil
+
+import "go/build"
+`,
+		name: "buildutil",
+		err:  nil,
+	},
+}
+
+func TestReadPackageName(t *testing.T) {
+	for i, x := range packageNameTests {
+		name, err := readPackageName([]byte(x.src))
+		if err != x.err {
+			t.Errorf("%d error (%v): %v", i, x.err, err)
+		}
+		if err != nil {
+			continue
+		}
+		if name != x.name {
+			t.Errorf("%d name (%s): %s", i, x.name, name)
+		}
+	}
+}
+
+func BenchmarkReadPackageName_Short(b *testing.B) {
+	src := []byte("package foo")
+	for i := 0; i < b.N; i++ {
+		readPackageName(src)
+	}
+}
+
+func BenchmarkReadPackageName_Medium(b *testing.B) {
+	src := []byte("// +build linux\npackage foo")
+	for i := 0; i < b.N; i++ {
+		readPackageName(src)
+	}
+}
+
+func BenchmarkReadPackageName_Long(b *testing.B) {
+	src := []byte(`// Copyright 2011 The Go Authors.  All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// +build !go1.5
+
+/*
+  For all Go versions other than 1.5 use the Import and ImportDir functions
+  declared in go/build.
+*/
+
+package buildutil
+
+import "go/build"`)
+	for i := 0; i < b.N; i++ {
+		readPackageName(src)
+	}
+}

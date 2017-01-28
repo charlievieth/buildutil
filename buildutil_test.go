@@ -25,14 +25,14 @@ func init() {
 	cwd, _ := os.Getwd()
 	for _, s := range build.Default.SrcDirs() {
 		if strings.HasPrefix(cwd, s) {
-			CurrentImportPath = strings.TrimLeft(strings.TrimPrefix(cwd, s), "/")
+			CurrentImportPath = filepath.ToSlash(strings.TrimLeft(strings.TrimPrefix(cwd, s), string(filepath.Separator)))
 			break
 		}
 	}
 	if CurrentImportPath == "" {
 		panic("Invalid CurrentImportPath")
 	}
-	CurrentWorkingDirectory = cwd
+	CurrentWorkingDirectory = filepath.ToSlash(cwd)
 }
 
 // Copied from go/build/build_test.go
