@@ -246,14 +246,17 @@ func readImports(f io.Reader, reportSyntaxError bool, imports *[]string) ([]byte
 	return r.buf, r.err
 }
 
-func isSpace(c rune) bool {
+func isSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }
 
 func readPackageName(b []byte) (string, error) {
 	const minLen = len("package _\n")
 
-	b = bytes.TrimLeftFunc(b, isSpace)
+	// trim left whitespace
+	for len(b) > 0 && isSpace(b[0]) {
+		b = b[1:]
+	}
 
 Loop:
 	for len(b) >= minLen {
@@ -287,10 +290,10 @@ Loop:
 
 	if len(b) >= minLen && bytes.HasPrefix(b, []byte("package")) {
 		b = b[len("package"):]
-		if !isSpace(rune(b[0])) {
+		if !isSpace(b[0]) {
 			return "", errSyntax
 		}
-		for len(b) > 0 && isSpace(rune(b[0])) {
+		for len(b) > 0 && isSpace(b[0]) {
 			b = b[1:]
 		}
 		i := 0
