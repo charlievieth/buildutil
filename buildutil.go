@@ -42,6 +42,9 @@ func GoodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) b
 
 // ShouldBuild reports whether it is okay to use this file, and adds any build
 // tags to allTags.
+//
+// Note: only +build tags are checked.  Syntactically incorrect content may be
+// marked as build-able if no +build tags are present.
 func ShouldBuild(ctxt *build.Context, content []byte, allTags map[string]bool) bool {
 	return shouldBuild(ctxt, content, allTags)
 }
@@ -83,7 +86,7 @@ func ShortImport(ctxt *build.Context, path string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	data, err := readImports(f, true, nil)
+	data, err := readImportsFast(f, true, nil)
 	f.Close()
 	if err != nil {
 		return "", false
@@ -186,7 +189,7 @@ func match(ctxt *build.Context, name string, allTags map[string]bool) bool {
 		}
 		return false
 	}
-	if i := strings.Index(name, ","); i >= 0 {
+	if i := strings.IndexByte(name, ','); i >= 0 {
 		// comma-separated list
 		ok1 := match(ctxt, name[:i], allTags)
 		ok2 := match(ctxt, name[i+1:], allTags)

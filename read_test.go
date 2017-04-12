@@ -5,6 +5,8 @@
 package buildutil
 
 import (
+	"bytes"
+	"go/build"
 	"io"
 	"strings"
 	"testing"
@@ -315,5 +317,57 @@ package buildutil
 import "go/build"`)
 	for i := 0; i < b.N; i++ {
 		readPackageName(src)
+	}
+}
+
+func BenchmarkReadImports_Long(b *testing.B) {
+	src := []byte(`// Copyright 2011 The Go Authors.  All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// +build !go1.5
+
+/*
+  For all Go versions other than 1.5 use the Import and ImportDir functions
+  declared in go/build.
+*/
+
+package buildutil
+
+import "go/build"`)
+	r := bytes.NewReader(src)
+	for i := 0; i < b.N; i++ {
+		readImports(r, true, nil)
+		r.Seek(0, 0)
+	}
+}
+
+func BenchmarkShortImport_Long(b *testing.B) {
+	src := []byte(`// Copyright 2011 The Go Authors.  All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// +build !go1.5
+
+/*
+  For all Go versions other than 1.5 use the Import and ImportDir functions
+  declared in go/build.
+*/
+
+package buildutil
+
+import "go/build"`)
+	const filename = "go_darwin_amd64.go"
+	ctxt := build.Default
+	rc := &nopReadCloser{s: src}
+	ctxt.OpenFile = func(path string) (io.ReadCloser, error) {
+		if path != filename {
+			panic("invalid filename: " + path)
+		}
+		rc.Reset()
+		return rc, nil
+	}
+	for i := 0; i < b.N; i++ {
+		ShortImport(&ctxt, filename)
 	}
 }

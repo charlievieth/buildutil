@@ -246,6 +246,23 @@ func readImports(f io.Reader, reportSyntaxError bool, imports *[]string) ([]byte
 	return r.buf, r.err
 }
 
+// readImportsFast is like readImports, except that it stops reading after the
+// package clause.
+func readImportsFast(f io.Reader, reportSyntaxError bool, imports *[]string) ([]byte, error) {
+	r := importReader{b: bufio.NewReader(f)}
+
+	r.readKeyword("package")
+	r.readIdent()
+	r.readByte()
+
+	// If we stopped successfully before EOF, we read a byte that told us we were done.
+	// Return all but that last byte, which would cause a syntax error if we let it through.
+	if r.err == nil && !r.eof {
+		return r.buf[:len(r.buf)-1], nil
+	}
+	return r.buf, r.err
+}
+
 func isSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }
