@@ -5,6 +5,7 @@
 package buildutil
 
 import (
+	"fmt"
 	"go/build"
 	"io"
 	"io/ioutil"
@@ -61,7 +62,7 @@ func TestMatch(t *testing.T) {
 	what := "default"
 	matchFn := func(tag string, want map[string]bool) {
 		m := make(map[string]bool)
-		if !match(ctxt, tag, m) {
+		if !match(ctxt, tag, m, false) {
 			t.Errorf("%s context should match %s, does not", what, tag)
 		}
 		if !reflect.DeepEqual(m, want) {
@@ -70,7 +71,7 @@ func TestMatch(t *testing.T) {
 	}
 	nomatch := func(tag string, want map[string]bool) {
 		m := make(map[string]bool)
-		if match(ctxt, tag, m) {
+		if match(ctxt, tag, m, false) {
 			t.Errorf("%s context should NOT match %s, does", what, tag)
 		}
 		if !reflect.DeepEqual(m, want) {
@@ -79,153 +80,118 @@ func TestMatch(t *testing.T) {
 	}
 
 	matchFn(runtime.GOOS+","+runtime.GOARCH, map[string]bool{runtime.GOOS: true, runtime.GOARCH: true})
-	matchFn(runtime.GOOS+","+runtime.GOARCH+",!foo", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "foo": true})
+	matchFn(runtime.GOOS+","+runtime.GOARCH+",!foo", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "foo": false})
 	nomatch(runtime.GOOS+","+runtime.GOARCH+",foo", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "foo": true})
 
 	what = "modified"
 	ctxt.BuildTags = []string{"foo"}
 	matchFn(runtime.GOOS+","+runtime.GOARCH, map[string]bool{runtime.GOOS: true, runtime.GOARCH: true})
 	matchFn(runtime.GOOS+","+runtime.GOARCH+",foo", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "foo": true})
-	nomatch(runtime.GOOS+","+runtime.GOARCH+",!foo", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "foo": true})
-	matchFn(runtime.GOOS+","+runtime.GOARCH+",!bar", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "bar": true})
+	nomatch(runtime.GOOS+","+runtime.GOARCH+",!foo", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "foo": false})
+	matchFn(runtime.GOOS+","+runtime.GOARCH+",!bar", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "bar": false})
 	nomatch(runtime.GOOS+","+runtime.GOARCH+",bar", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "bar": true})
 	nomatch("!", map[string]bool{})
 }
 
-// Copied from go/build/build_test.go
+type shouldBuildTest struct {
+	src   string
+	name  string
+	tags  map[string]bool
+	match bool
+}
+
+var shouldBuildTests = []shouldBuildTest{
+	{
+		src: "// +build tag1\n\n" +
+			"package main\n",
+		name:  "main",
+		tags:  map[string]bool{"tag1": true},
+		match: true,
+	},
+	{
+		src: "// +build !tag1\n\n" +
+			"package main\n",
+		name:  "",
+		tags:  map[string]bool{"tag1": false},
+		match: false,
+	},
+	{
+		src: "// +build !tag2 tag1\n\n" +
+			"package main\n",
+		name:  "main",
+		tags:  map[string]bool{"tag1": true, "tag2": false},
+		match: true,
+	},
+	{
+		src: "// +build cgo\n\n" +
+			"// This package implements parsing of tags like\n" +
+			"// +build tag1\n" +
+			"package build",
+		name:  "",
+		tags:  map[string]bool{"cgo": true},
+		match: false,
+	},
+	{
+		src: "// Copyright The Go Authors.\n\n" +
+			"package build\n\n" +
+			"// shouldBuild checks tags given by lines of the form\n" +
+			"// +build tag\n" +
+			"func shouldBuild(content []byte)\n",
+		name:  "build",
+		tags:  map[string]bool{},
+		match: true,
+	},
+	{
+		src: "// Copyright The Go Authors.\n\n" +
+			"package build\n\n" +
+			"// shouldBuild checks tags given by lines of the form\n" +
+			"// +build tag\n" +
+			"func shouldBuild(content \n", // here
+		name:  "build",
+		tags:  map[string]bool{},
+		match: true,
+	},
+}
+
 func TestShouldBuild(t *testing.T) {
-	const file1 = "// +build tag1\n\n" +
-		"package main\n"
-	want1 := map[string]bool{"tag1": true}
-
-	const file2 = "// +build cgo\n\n" +
-		"// This package implements parsing of tags like\n" +
-		"// +build tag1\n" +
-		"package build"
-	want2 := map[string]bool{"cgo": true}
-
-	const file3 = "// Copyright The Go Authors.\n\n" +
-		"package build\n\n" +
-		"// shouldBuild checks tags given by lines of the form\n" +
-		"// +build tag\n" +
-		"func shouldBuild(content []byte)\n"
-	want3 := map[string]bool{}
-
-	// Syntax error
-	const file4 = "// Copyright The Go Authors.\n\n" +
-		"package build\n\n" +
-		"// shouldBuild checks tags given by lines of the form\n" +
-		"// +build tag\n" +
-		"func shouldBuild(content \n" // here
-	want4 := map[string]bool{}
-
 	ctx := &build.Context{BuildTags: []string{"tag1"}}
-	m := map[string]bool{}
-	if !shouldBuild(ctx, []byte(file1), m) {
-		t.Errorf("shouldBuild(file1) = false, want true")
-	}
-	// Test exported wrapper around shouldBuild.
-	if !ShouldBuild(ctx, []byte(file1), m) {
-		t.Errorf("ShouldBuild(file1) = false, want true")
-	}
-	if !reflect.DeepEqual(m, want1) {
-		t.Errorf("shoudBuild(file1) tags = %v, want %v", m, want1)
-	}
 
-	m = map[string]bool{}
-	if shouldBuild(ctx, []byte(file2), m) {
-		t.Errorf("shouldBuild(file2) = true, want false")
-	}
-	if ShouldBuild(ctx, []byte(file2), m) {
-		t.Errorf("ShouldBuild(file2) = true, want false")
-	}
-	if !reflect.DeepEqual(m, want2) {
-		t.Errorf("shoudBuild(file2) tags = %v, want %v", m, want2)
-	}
+	for i, x := range shouldBuildTests {
+		m := map[string]bool{}
+		filename := fmt.Sprintf("file%d", i+1)
 
-	m = map[string]bool{}
-	ctx = &build.Context{BuildTags: nil}
-	if !shouldBuild(ctx, []byte(file3), m) {
-		t.Errorf("shouldBuild(file3) = false, want true")
-	}
-	if !ShouldBuild(ctx, []byte(file3), m) {
-		t.Errorf("ShouldBuild(file3) = false, want true")
-	}
-	if !reflect.DeepEqual(m, want3) {
-		t.Errorf("shoudBuild(file3) tags = %v, want %v", m, want3)
-	}
-
-	// Syntax error
-	m = map[string]bool{}
-	if !shouldBuild(ctx, []byte(file4), m) {
-		t.Errorf("shouldBuild(file4) = false, want true")
-	}
-	if !ShouldBuild(ctx, []byte(file4), m) {
-		t.Errorf("ShouldBuild(file4) = false, want true")
-	}
-	if !reflect.DeepEqual(m, want4) {
-		t.Errorf("shoudBuild(file4) tags = %v, want %v", m, want3)
+		if ok := shouldBuild(ctx, []byte(x.src), m); ok != x.match {
+			t.Errorf("shouldBuild(%s) = %v, want %v", filename, ok, x.match)
+		}
+		// Test exported wrapper around shouldBuild.
+		if ok := ShouldBuild(ctx, []byte(x.src), m); ok != x.match {
+			t.Errorf("ShouldBuild(%s) = %v, want %v", filename, ok, x.match)
+		}
+		if !reflect.DeepEqual(m, x.tags) {
+			t.Errorf("shoudBuild(%s) tags = %v, want %v", filename, m, x.tags)
+		}
 	}
 }
 
-// Identical to TestShouldBuild, but testing ShortImport
 func TestShortImport(t *testing.T) {
-	const file1 = "// +build tag1\n\n" +
-		"package main\n"
+	ctx := &build.Context{BuildTags: []string{"tag1"}}
 
-	const file2 = "// +build cgo\n\n" +
-		"// This package implements parsing of tags like\n" +
-		"// +build tag1\n" +
-		"package build"
+	for i, x := range shouldBuildTests {
+		filename := fmt.Sprintf("file%d", i+1)
 
-	const file3 = "// Copyright The Go Authors.\n\n" +
-		"package build\n\n" +
-		"// shouldBuild checks tags given by lines of the form\n" +
-		"// +build tag\n" +
-		"func shouldBuild(content []byte)\n"
-
-	// Syntax error
-	const file4 = "// Copyright The Go Authors.\n\n" +
-		"package build\n\n" +
-		"// shouldBuild checks tags given by lines of the form\n" +
-		"// +build tag\n" +
-		"func shouldBuild(content \n" // here
-
-	overlay := map[string]*nopReadCloser{
-		"file1": &nopReadCloser{s: []byte(file1)},
-		"file2": &nopReadCloser{s: []byte(file2)},
-		"file3": &nopReadCloser{s: []byte(file3)},
-		"file4": &nopReadCloser{s: []byte(file4)},
-	}
-	ctx := &build.Context{
-		BuildTags: []string{"tag1"},
-		OpenFile: func(path string) (io.ReadCloser, error) {
-			rc, ok := overlay[path]
-			if !ok {
-				panic("missing file: " + path)
+		ctx.OpenFile = func(path string) (io.ReadCloser, error) {
+			if path != filename {
+				t.Errorf("OpenFile: filename = %s want %s", path, filename)
 			}
-			return rc, nil
-		},
-	}
+			return ioutil.NopCloser(strings.NewReader(x.src)), nil
+		}
 
-	var testCases = []struct {
-		file string
-		name string
-		ok   bool
-	}{
-		{"file1", "main", true},
-		{"file2", "", false},
-		{"file3", "build", true},
-		{"file4", "build", true},
-	}
-
-	for _, x := range testCases {
-		name, ok := ShortImport(ctx, x.file)
-		if ok != x.ok {
-			t.Errorf("ShortImport(%s) = %v, want %v", x.file, ok, x.ok)
+		name, ok := ShortImport(ctx, filename)
+		if ok != x.match {
+			t.Errorf("ShortImport(%s) = %v, want %v", filename, ok, x.match)
 		}
 		if name != x.name {
-			t.Errorf("ShortImport(%s) = %q, want %q", x.file, name, x.name)
+			t.Errorf("ShortImport(%s) = %q, want %q", filename, name, x.name)
 		}
 	}
 }

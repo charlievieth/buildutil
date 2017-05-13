@@ -157,7 +157,7 @@ func shouldBuild(ctxt *build.Context, content []byte, allTags map[string]bool) b
 				if f[0] == "+build" {
 					ok := false
 					for _, tok := range f[1:] {
-						if match(ctxt, tok, allTags) {
+						if match(ctxt, tok, allTags, false) {
 							ok = true
 						}
 					}
@@ -184,7 +184,7 @@ func shouldBuild(ctxt *build.Context, content []byte, allTags map[string]bool) b
 //	!tag (if tag is not listed in ctxt.BuildTags or ctxt.ReleaseTags)
 //	a comma-separated list of any of these
 //
-func match(ctxt *build.Context, name string, allTags map[string]bool) bool {
+func match(ctxt *build.Context, name string, allTags map[string]bool, negated bool) bool {
 	if name == "" {
 		if allTags != nil {
 			allTags[name] = true
@@ -193,19 +193,19 @@ func match(ctxt *build.Context, name string, allTags map[string]bool) bool {
 	}
 	if i := strings.IndexByte(name, ','); i >= 0 {
 		// comma-separated list
-		ok1 := match(ctxt, name[:i], allTags)
-		ok2 := match(ctxt, name[i+1:], allTags)
+		ok1 := match(ctxt, name[:i], allTags, false)
+		ok2 := match(ctxt, name[i+1:], allTags, false)
 		return ok1 && ok2
 	}
 	if strings.HasPrefix(name, "!!") { // bad syntax, reject always
 		return false
 	}
 	if strings.HasPrefix(name, "!") { // negation
-		return len(name) > 1 && !match(ctxt, name[1:], allTags)
+		return len(name) > 1 && !match(ctxt, name[1:], allTags, true)
 	}
 
 	if allTags != nil {
-		allTags[name] = true
+		allTags[name] = !negated
 	}
 
 	// Tags must be letters, digits, underscores or dots.
