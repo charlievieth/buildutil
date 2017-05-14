@@ -346,6 +346,9 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 	if ctxt.GOROOT == "" {
 		ctxt.GOROOT = runtime.GOROOT()
 	}
+	if ctxt.Compiler == "" {
+		ctxt.Compiler = runtime.Compiler
+	}
 	// TODO Fix GOPATH
 
 	// TODO: Is it possible to have conflicting filename and +build tags?
