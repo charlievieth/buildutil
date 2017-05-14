@@ -77,6 +77,7 @@ func goodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) b
 
 var knownOS = make(map[string]bool)
 var knownArch = make(map[string]bool)
+var knownReleaseTag = make(map[string]bool)
 
 func init() {
 	for _, v := range strings.Fields(goosList) {
@@ -84,5 +85,8 @@ func init() {
 	}
 	for _, v := range strings.Fields(goarchList) {
 		knownArch[v] = true
+	}
+	for _, v := range build.Default.ReleaseTags {
+		knownReleaseTag[v] = true
 	}
 }

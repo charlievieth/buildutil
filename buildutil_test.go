@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -85,6 +86,8 @@ func TestMatch(t *testing.T) {
 
 	what = "modified"
 	ctxt.BuildTags = []string{"foo"}
+	defer func() { ctxt.BuildTags = ctxt.BuildTags[:0] }()
+
 	matchFn(runtime.GOOS+","+runtime.GOARCH, map[string]bool{runtime.GOOS: true, runtime.GOARCH: true})
 	matchFn(runtime.GOOS+","+runtime.GOARCH+",foo", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "foo": true})
 	nomatch(runtime.GOOS+","+runtime.GOARCH+",!foo", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "foo": false})
@@ -193,6 +196,162 @@ func TestShortImport(t *testing.T) {
 		if name != x.name {
 			t.Errorf("ShortImport(%s) = %q, want %q", filename, name, x.name)
 		}
+	}
+}
+
+func TestMatchContext_BuildTags(t *testing.T) {
+
+	// Remove tag
+	{
+		src := "// +build !tag1\n\n" +
+			"package main\n"
+		orig := &build.Context{BuildTags: []string{"tag1"}}
+
+		ctx, err := MatchContext(orig, "file1", src)
+		if err != nil {
+			t.Error(err)
+		}
+		if len(ctx.BuildTags) != 0 {
+			t.Errorf("MatchContext - BuildTags: want [] got: %s", ctx.BuildTags)
+		}
+	}
+
+	// Add tags
+	{
+		src := "// +build tag1 tag2\n\n" +
+			"package main\n"
+
+		expTags := []string{"tag1", "tag2"}
+		orig := &build.Context{}
+
+		ctx, err := MatchContext(orig, "file1", src)
+		if err != nil {
+			t.Error(err)
+		}
+
+		sort.Strings(ctx.BuildTags)
+		if !reflect.DeepEqual(ctx.BuildTags, expTags) {
+			t.Errorf("MatchContext - BuildTags: want %s got: %s", expTags, ctx.BuildTags)
+		}
+	}
+
+	// Add + Remove tags
+	{
+		src := "// +build tag1,tag2,!tag3,tag4\n\n" +
+			"package main\n"
+
+		expTags := []string{"tag1", "tag2", "tag4"}
+		orig := &build.Context{BuildTags: []string{"tag3", "tag4"}}
+
+		ctx, err := MatchContext(orig, "file1", src)
+		if err != nil {
+			t.Error(err)
+		}
+
+		sort.Strings(ctx.BuildTags)
+		if !reflect.DeepEqual(ctx.BuildTags, expTags) {
+			t.Errorf("MatchContext - BuildTags: want %s got: %s", expTags, ctx.BuildTags)
+		}
+	}
+
+	// Handle 'ignore'
+	{
+		src := "// +build ignore\n\n" +
+			"package main\n"
+
+		expTags := []string{"ignore"}
+		orig := &build.Context{}
+
+		ctx, err := MatchContext(orig, "file1", src)
+		if err != nil {
+			t.Error(err)
+		}
+
+		sort.Strings(ctx.BuildTags)
+		if !reflect.DeepEqual(ctx.BuildTags, expTags) {
+			t.Errorf("MatchContext - BuildTags: want %s got: %s", expTags, ctx.BuildTags)
+		}
+	}
+}
+
+func TestMatchContext_GOOS(t *testing.T) {
+
+	// find preferred OS that is not the current OS.
+	var prefGOOS string
+	for _, s := range preferredOSList {
+		if s != runtime.GOOS {
+			prefGOOS = s
+			break
+		}
+	}
+	if prefGOOS == "" || prefGOOS == runtime.GOOS {
+		t.Fatal("failed to find GOOS from preferred list!")
+	}
+
+	orig := build.Default
+
+	// use only valid GOOS
+	{
+		src := fmt.Sprintf("// +build %s\n\npackage main\n", prefGOOS)
+		ctx, err := MatchContext(&orig, "file1", src)
+		if err != nil {
+			t.Error(err)
+		}
+		if ctx.GOOS != prefGOOS {
+			t.Errorf("MatchContext: GOOS = %s, want %s", ctx.GOOS, prefGOOS)
+		}
+	}
+
+	// pick from preferred list
+	{
+		src := fmt.Sprintf("// +build !%s\n\npackage main\n", runtime.GOOS)
+		ctx, err := MatchContext(&orig, "file1", src)
+		if err != nil {
+			t.Error(err)
+		}
+		if ctx.GOOS != prefGOOS {
+			t.Errorf("MatchContext: GOOS = %s, want %s", ctx.GOOS, prefGOOS)
+		}
+	}
+
+	// exclude all preferred OSs
+	{
+		list := make([]string, len(preferredOSList))
+		for i, s := range preferredOSList[0:] {
+			list[i] = "!" + s
+		}
+		src := fmt.Sprintf("// +build %s\n\npackage main\n", strings.Join(list, ","))
+		ctx, err := MatchContext(&orig, "file1", src)
+		if err != nil {
+			t.Error(err)
+		}
+		if ctx.GOOS == runtime.GOOS {
+			t.Errorf("MatchContext: GOOS (%s) is negated: %s", ctx.GOOS, src)
+		}
+		if !knownOS[ctx.GOOS] {
+			t.Errorf("MatchContext: GOOS (%s) is not in known OS list: %s", ctx.GOOS, knownOSList)
+		}
+	}
+}
+
+func TestMatchContext_ReleaseTags(t *testing.T) {
+	orig := build.Default
+	orig.ReleaseTags = []string{"go1.1", "go1.2", "go1.3", "go1.4", "go1.5", "go1.6", "go1.7", "go1.8"}
+
+	src := "// +build !go1.8\n\n" +
+		"package main\n"
+	ctx, err := MatchContext(&orig, "file1", src)
+	if err != nil {
+		t.Error(err)
+	}
+	if len(ctx.BuildTags) != 0 {
+		t.Errorf("MatchContext.ReleaseTags: want [] got: %s", ctx.BuildTags)
+	}
+	if ctx.GOOS != runtime.GOOS {
+		t.Errorf("MatchContext.ReleaseTags: GOOS = %s, want %s", ctx.GOOS, runtime.GOOS)
+	}
+	if ctx.GOARCH != runtime.GOARCH {
+		t.Errorf("MatchContext.ReleaseTags: GOARCH = %s, want %s", ctx.GOARCH, runtime.GOARCH)
 	}
 }
 

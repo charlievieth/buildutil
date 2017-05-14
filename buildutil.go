@@ -7,10 +7,13 @@ package buildutil
 
 import (
 	"bytes"
+	"errors"
 	"go/build"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"unicode"
@@ -71,6 +74,28 @@ func Include(ctxt *build.Context, path string) bool {
 	return shouldBuild(ctxt, data, nil)
 }
 
+func IncludeTags(ctxt *build.Context, path string, tags map[string]bool) (bool, error) {
+	if !goodOSArchFile(ctxt, filepath.Base(path), tags) {
+		return false, nil
+	}
+	var f io.ReadCloser
+	var err error
+	if fn := ctxt.OpenFile; fn != nil {
+		f, err = fn(path)
+	} else {
+		f, err = os.Open(path)
+	}
+	if err != nil {
+		return false, err
+	}
+	data, err := readImportsFast(f, true, nil)
+	f.Close()
+	if err != nil {
+		return false, err
+	}
+	return shouldBuild(ctxt, data, tags), nil
+}
+
 // TODO (CEV): rename
 func ShortImport(ctxt *build.Context, path string) (string, bool) {
 	if !goodOSArchFile(ctxt, filepath.Base(path), nil) {
@@ -96,6 +121,361 @@ func ShortImport(ctxt *build.Context, path string) (string, bool) {
 	}
 	name, err := readPackageName(data)
 	return name, err == nil
+}
+
+func openReader(ctxt *build.Context, filename string, src interface{}) (io.ReadCloser, error) {
+	if src != nil {
+		switch s := src.(type) {
+		case string:
+			return ioutil.NopCloser(strings.NewReader(s)), nil
+		case []byte:
+			return ioutil.NopCloser(bytes.NewReader(s)), nil
+		case io.ReadCloser:
+			return s, nil
+		case io.Reader:
+			return ioutil.NopCloser(s), nil
+		default:
+			return nil, errors.New("invalid source")
+		}
+	}
+	if ctxt.OpenFile != nil {
+		return ctxt.OpenFile(filename)
+	}
+	return os.Open(filename)
+}
+
+func firstValue(m map[string]bool) (string, bool) {
+	for s, ok := range m {
+		return s, ok
+	}
+	return "", false
+}
+
+var preferredOSList = [...]string{
+	runtime.GOOS,
+	"darwin",
+	"linux",
+	"windows",
+	"openbsd",
+	"freebsd",
+	"netbsd",
+}
+
+var preferredArchList = [...]string{
+	runtime.GOARCH,
+	"amd64",
+	"386",
+	"arm",
+	"arm64",
+	"ppc64",
+}
+
+func validArch(ctxt *build.Context, list map[string]bool) string {
+	n := len(list)
+	if n == 0 || list[ctxt.GOARCH] {
+		return ctxt.GOARCH
+	}
+	if list[runtime.GOARCH] {
+		return runtime.GOARCH
+	}
+	if n == 1 {
+		arch, ok := firstValue(list)
+		// one valid arch
+		if ok {
+			return arch
+		}
+		// one invalid arch
+		for _, s := range preferredArchList {
+			if s != arch {
+				return s
+			}
+		}
+		for _, s := range KnownArchList() {
+			if s != arch {
+				return s
+			}
+		}
+		// this should be unreachable
+		panic("unkown Arch type: " + arch)
+	}
+	// easy check
+	for _, s := range preferredArchList {
+		if list[s] {
+			return s
+		}
+	}
+	var allowed []string
+	var negated map[string]bool
+	for arch, ok := range list {
+		if ok {
+			allowed = append(allowed, arch)
+		} else {
+			if negated == nil {
+				negated = make(map[string]bool)
+			}
+			negated[arch] = true
+		}
+	}
+	if len(allowed) != 0 {
+		// result should be deterministic
+		sort.Strings(allowed)
+		return allowed[0]
+	}
+	// find an Arch that is not negated
+	for _, s := range preferredArchList {
+		if !negated[s] {
+			return s
+		}
+	}
+	for _, s := range KnownArchList() {
+		if !negated[s] {
+			return s
+		}
+	}
+	// every known Arch is negated - no point trying
+	return ctxt.GOARCH
+}
+
+func validOS(ctxt *build.Context, list map[string]bool) string {
+	n := len(list)
+	if n == 0 || list[ctxt.GOOS] {
+		return ctxt.GOOS
+	}
+	if list[runtime.GOOS] {
+		return runtime.GOOS
+	}
+	if n == 1 {
+		os, ok := firstValue(list)
+		// one valid os
+		if ok {
+			return os
+		}
+		// one invalid os
+		for _, s := range preferredOSList {
+			if s != os {
+				return s
+			}
+		}
+		for _, s := range KnownOSList() {
+			if s != os {
+				return s
+			}
+		}
+		// this should be unreachable
+		panic("unkown OS type: " + os)
+	}
+	// easy check
+	for _, s := range preferredOSList {
+		if list[s] {
+			return s
+		}
+	}
+	var allowed []string
+	var negated map[string]bool
+	for os, ok := range list {
+		if ok {
+			allowed = append(allowed, os)
+		} else {
+			if negated == nil {
+				negated = make(map[string]bool)
+			}
+			negated[os] = true
+		}
+	}
+	if len(allowed) != 0 {
+		// result should be deterministic
+		sort.Strings(allowed)
+		return allowed[0]
+	}
+	// find an OS that is not negated
+	for _, s := range preferredOSList {
+		if !negated[s] {
+			return s
+		}
+	}
+	for _, s := range KnownOSList() {
+		if !negated[s] {
+			return s
+		}
+	}
+	// every known OS is negated - no point trying
+	return ctxt.GOOS
+}
+
+func isNegated(k string, m map[string]bool) bool {
+	v, ok := m[k]
+	return ok && !v
+}
+
+func copyContext(orig *build.Context) *build.Context {
+	tmp := *orig // make a copy
+	ctxt := &tmp
+	if n := len(orig.BuildTags); n != 0 {
+		ctxt.BuildTags = make([]string, n)
+		copy(ctxt.BuildTags, orig.BuildTags)
+	}
+	if n := len(ctxt.ReleaseTags); n != 0 {
+		ctxt.ReleaseTags = make([]string, n)
+		copy(ctxt.ReleaseTags, orig.ReleaseTags)
+	}
+	return ctxt
+}
+
+// TODO: Fix GOPATH as well
+func MatchContext(orig *build.Context, filename string, src interface{}) (*build.Context, error) {
+	rc, err := openReader(orig, filename, src)
+	if err != nil {
+		return nil, err
+	}
+	data, err := readImportsFast(rc, true, nil)
+	rc.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	// copy
+	ctxt := copyContext(orig)
+
+	// init
+	if ctxt.GOARCH == "" {
+		ctxt.GOARCH = runtime.GOARCH
+	}
+	if ctxt.GOOS == "" {
+		ctxt.GOOS = runtime.GOOS
+	}
+	if ctxt.GOROOT == "" {
+		ctxt.GOROOT = runtime.GOROOT()
+	}
+	// TODO Fix GOPATH
+
+	// TODO: Is it possible to have conflicting filename and +build tags?
+	tags := make(map[string]bool)
+	if !goodOSArchFile(ctxt, filename, tags) {
+		for tag := range tags {
+			switch {
+			case knownOS[tag]:
+				ctxt.GOOS = tag
+			case knownArch[tag]:
+				ctxt.GOARCH = tag
+			}
+		}
+	}
+
+	if shouldBuild(ctxt, data, tags) {
+		return ctxt, nil
+	}
+
+	// CEV: Is this possible and if so how?
+	if len(tags) == 0 {
+		return nil, errors.New("build tags are required to match Context")
+	}
+
+	// unhandled tags
+
+	// TODO: handle compiler mismatch
+	switch ctxt.Compiler {
+	case "gc":
+		// if 'gccgo' is specified 'gc' cannot be used
+		if tags["gccgo"] {
+			return nil, errors.New("compiler mismatch: gc")
+		}
+		if isNegated("gc", tags) {
+			return nil, errors.New("compiler negated: gc")
+		}
+	case "gccgo":
+		// if 'gc' is specified 'gccgo' cannot be used
+		if tags["gc"] {
+			return nil, errors.New("compiler mismatch: gccgo")
+		}
+		if isNegated("gccgo", tags) {
+			return nil, errors.New("compiler negated: gccgo")
+		}
+	default:
+		// ignore
+	}
+
+	// special cases
+
+	if cgo, ok := tags["cgo"]; ok {
+		ctxt.CgoEnabled = cgo
+	}
+
+	// find and match OS, Arch and other build tags
+
+	var (
+		foundOS       map[string]bool
+		foundArch     map[string]bool
+		foundTags     map[string]bool
+		foundReleases map[string]bool
+	)
+	for tag, ok := range tags {
+		switch {
+		case knownOS[tag]:
+			if foundOS == nil {
+				foundOS = make(map[string]bool)
+			}
+			foundOS[tag] = ok
+		case knownArch[tag]:
+			if foundArch == nil {
+				foundArch = make(map[string]bool)
+			}
+			foundArch[tag] = ok
+		case knownReleaseTag[tag]:
+			if foundReleases == nil {
+				foundReleases = make(map[string]bool)
+			}
+			foundReleases[tag] = ok
+		default:
+			if foundTags == nil {
+				foundTags = make(map[string]bool)
+			}
+			foundTags[tag] = ok
+		}
+	}
+
+	if len(foundOS) != 0 {
+		ctxt.GOOS = validOS(ctxt, foundOS)
+	}
+	if len(foundArch) != 0 {
+		ctxt.GOARCH = validArch(ctxt, foundArch)
+	}
+	if len(knownReleaseTag) != 0 {
+		// TODO: Handle
+	}
+
+	// exit if there are no more tags
+	if len(foundTags) == 0 {
+		return ctxt, nil
+	}
+
+	// WARN: We should check what these 'other' build tags
+	// are and make sure they aren't special Go tags.
+
+	if len(ctxt.BuildTags) == 0 {
+		for tag, ok := range foundTags {
+			if ok {
+				ctxt.BuildTags = append(ctxt.BuildTags, tag)
+			}
+		}
+		return ctxt, nil
+	}
+
+	ctxtTags := make(map[string]bool)
+	for _, s := range ctxt.BuildTags {
+		ctxtTags[s] = true
+	}
+	for tag, ok := range foundTags {
+		ctxtTags[tag] = ok
+	}
+	var buildTags []string // don't overwrite ctxt.BuildTags
+	for tag, ok := range ctxtTags {
+		if ok {
+			buildTags = append(buildTags, tag)
+		}
+	}
+	ctxt.BuildTags = buildTags
+
+	return ctxt, nil
 }
 
 var slashslash = []byte("//")
