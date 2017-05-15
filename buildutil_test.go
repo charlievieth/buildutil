@@ -334,6 +334,21 @@ func TestMatchContext_GOOS(t *testing.T) {
 	}
 }
 
+func TestMatchContext_Filename(t *testing.T) {
+	const src = "//\n\npackage platform\n\n" +
+		"import \"golang.org/x/sys/windows\"\n\n"
+	const expGOOS = "windows"
+	orig := &build.Context{GOOS: "darwin"}
+
+	ctx, err := MatchContext(orig, "file_"+expGOOS+".go", src)
+	if err != nil {
+		t.Error(err)
+	}
+	if ctx.GOOS != expGOOS {
+		t.Errorf("MatchContext - Filename: want: %s got: %s", expGOOS, ctx.GOOS)
+	}
+}
+
 func TestMatchContext_ReleaseTags(t *testing.T) {
 	orig := build.Default
 	orig.ReleaseTags = []string{"go1.1", "go1.2", "go1.3", "go1.4", "go1.5", "go1.6", "go1.7", "go1.8"}
