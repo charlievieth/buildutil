@@ -267,6 +267,8 @@ func isSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }
 
+var packageBytes = []byte("package")
+
 func readPackageName(b []byte) (string, error) {
 	const minLen = len("package _\n")
 
@@ -305,7 +307,7 @@ Loop:
 		}
 	}
 
-	if len(b) >= minLen && bytes.HasPrefix(b, []byte("package")) {
+	if len(b) >= minLen && bytes.HasPrefix(b, packageBytes) {
 		b = b[len("package"):]
 		if !isSpace(b[0]) {
 			return "", errSyntax

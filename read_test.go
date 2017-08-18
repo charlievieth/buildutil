@@ -315,15 +315,16 @@ package buildutil
 
 import "go/build"`
 
+var LongPackageHeaderBytes = []byte(LongPackageHeader)
+
 func BenchmarkReadPackageName_Long(b *testing.B) {
-	src := []byte(LongPackageHeader)
 	for i := 0; i < b.N; i++ {
-		readPackageName(src)
+		readPackageName(LongPackageHeaderBytes)
 	}
 }
 
 func BenchmarkReadImports_Long(b *testing.B) {
-	r := bytes.NewReader([]byte(LongPackageHeader))
+	r := bytes.NewReader(LongPackageHeaderBytes)
 	for i := 0; i < b.N; i++ {
 		readImports(r, true, nil)
 		r.Seek(0, 0)
@@ -332,7 +333,7 @@ func BenchmarkReadImports_Long(b *testing.B) {
 
 func BenchmarkShortImport_Long(b *testing.B) {
 	const filename = "go_darwin_amd64.go"
-	rc := &nopReadCloser{s: []byte(LongPackageHeader)}
+	rc := &nopReadCloser{s: LongPackageHeaderBytes}
 	ctxt := build.Default
 	ctxt.OpenFile = func(path string) (io.ReadCloser, error) {
 		if path != filename {
