@@ -123,6 +123,19 @@ func ShortImport(ctxt *build.Context, path string) (string, bool) {
 	return name, err == nil
 }
 
+func ReadPackageName(path string, src interface{}) (string, error) {
+	rc, err := openReader(&build.Default, path, src)
+	if err != nil {
+		return "", err
+	}
+	data, err := readImportsFast(rc, true, nil)
+	rc.Close()
+	if err != nil {
+		return "", err
+	}
+	return readPackageName(data)
+}
+
 func openReader(ctxt *build.Context, filename string, src interface{}) (io.ReadCloser, error) {
 	if src != nil {
 		switch s := src.(type) {
