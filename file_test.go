@@ -58,3 +58,29 @@ func TestGoodOSArch(t *testing.T) {
 		}
 	}
 }
+
+var benchmark = [...]string{
+	"file.go",
+	"file_foo.go",
+	"file_" + thisArch + ".go",
+	"file_" + otherArch + ".go",
+	"file_" + thisOS + ".go",
+	"file_" + otherOS + ".go",
+	"file_" + thisOS + "_" + thisArch + ".go",
+	"file_" + otherOS + "_" + thisArch + ".go",
+	"file_" + thisOS + "_" + otherArch + "_test.go",
+	"file_" + otherOS + "_" + otherArch + "_test.go",
+	"file_foo_" + thisArch + ".go",
+	"file_foo_" + otherArch + ".go",
+	"file_foo_" + thisArch + "_test.go",
+	"file_foo_" + otherArch + "_test.go",
+	"long_file_name_foo_bar_" + otherArch + "_test.go",
+	"long_file_name_foo_bar_" + otherArch + ".go",
+}
+
+func BenchmarkGoodOSArch(b *testing.B) {
+	ctxt := build.Default
+	for i := 0; i < b.N; i++ {
+		goodOSArchFile(&ctxt, benchmark[i%len(benchmark)], nil)
+	}
+}

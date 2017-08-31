@@ -22,7 +22,7 @@ import (
 //
 // An exception: if GOOS=android, then files with GOOS=linux are also matched.
 func goodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) bool {
-	if dot := strings.Index(name, "."); dot != -1 {
+	if dot := strings.IndexByte(name, '.'); dot != -1 {
 		name = name[:dot]
 	}
 
@@ -33,13 +33,37 @@ func goodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) b
 	// systems, such as android, to arrive without breaking existing code with
 	// innocuous source code in "android.go". The easiest fix: cut everything
 	// in the name before the initial _.
-	i := strings.Index(name, "_")
+	i := strings.IndexByte(name, '_')
 	if i < 0 {
 		return true
 	}
 	name = name[i:] // ignore everything before first _
 
-	l := strings.Split(name, "_")
+	// inlined string split
+	var l []string
+	{
+		n := 1
+		for _, c := range name {
+			if c == '_' {
+				n++
+			}
+		}
+		l = make([]string, n)
+		n--
+		i := 0
+		for i < n {
+			m := strings.IndexByte(name, '_')
+			if m < 0 {
+				break
+			}
+			l[i] = name[:m]
+			name = name[m+1:]
+			i++
+		}
+		l[i] = name
+		l = l[:i+1]
+	}
+
 	if n := len(l); n > 0 && l[n-1] == "test" {
 		l = l[:n-1]
 	}
