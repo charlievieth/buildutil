@@ -66,7 +66,7 @@ func Include(ctxt *build.Context, path string) bool {
 	if err != nil {
 		return false
 	}
-	data, err := readImports(f, true, nil)
+	data, err := readImportsFast(f)
 	f.Close()
 	if err != nil {
 		return false
