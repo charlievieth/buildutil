@@ -534,6 +534,37 @@ func TestGoodOSArchFile(t *testing.T) {
 	matchFn(runtime.GOARCH+".go", map[string]bool{})
 }
 
+// func TestImportDirNotExist(t *testing.T) {
+// 	ctxt := build.Default
+// 	ctxt.GOPATH = ""
+
+// 	path, err := ImportPath(&ctxt, "go/build/doesnotexist")
+// 	if err == nil || !strings.HasPrefix(err.Error(), "cannot find package") {
+// 		t.Errorf(`%s got error: %q, want "cannot find package" error`, "test.label", err)
+// 	}
+// 	if path != "" {
+// 		t.Errorf(`got ImportPath: %q, want ""`, path)
+// 	}
+// }
+
+func BenchmarkImportPath(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := ImportPath(&build.Default, CurrentWorkingDirectory)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkImportPath_Base(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := build.ImportDir(CurrentWorkingDirectory, build.FindOnly)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func shortImportFiles(b *testing.B) []string {
 	list, err := filepath.Glob("testdata/os/*.go")
 	if err != nil {
