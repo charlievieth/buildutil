@@ -800,14 +800,6 @@ func gopath(ctxt *build.Context) []string {
 	return all
 }
 
-var knownOSList = sortStrings(strings.Fields(goosList))
-var knownArchList = sortStrings(strings.Fields(goarchList))
-
-func sortStrings(a []string) []string {
-	sort.Strings(a)
-	return a
-}
-
 // KnownOSList returns the known operating system values, sorted.
 func KnownOSList() []string {
 	s := make([]string, len(knownOSList))
@@ -820,4 +812,41 @@ func KnownArchList() []string {
 	s := make([]string, len(knownArchList))
 	copy(s, knownArchList)
 	return s
+}
+
+var (
+	knownOS         map[string]bool
+	knownArch       map[string]bool
+	knownReleaseTag map[string]bool
+	knownOSList     []string // goosList
+	knownArchList   []string // goarchList
+)
+
+func init() {
+	goos := strings.Fields(goosList)
+	sort.Strings(goos)
+
+	knownOSList = make([]string, len(goos))
+	copy(knownOSList, goos)
+
+	knownOS = make(map[string]bool, len(goos))
+	for _, v := range goos {
+		knownOS[v] = true
+	}
+
+	goarch := strings.Fields(goarchList)
+	sort.Strings(goarch)
+
+	knownArchList = make([]string, len(goarch))
+	copy(knownArchList, goarch)
+
+	knownArch = make(map[string]bool, len(goarch))
+	for _, v := range goarch {
+		knownArch[v] = true
+	}
+
+	knownReleaseTag = make(map[string]bool, len(build.Default.ReleaseTags))
+	for _, v := range build.Default.ReleaseTags {
+		knownReleaseTag[v] = true
+	}
 }
