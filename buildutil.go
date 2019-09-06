@@ -136,6 +136,32 @@ func ReadPackageName(path string, src interface{}) (string, error) {
 	return readPackageName(data)
 }
 
+// ReadPackageNameTags evaluates the Go source file at path and returns
+// the package name, if it can be used with build.Context ctxt, populates
+// any build tags (if tags is not nil), and any error that occured.
+func ReadPackageNameTags(ctxt *build.Context, path string, tags map[string]bool) (string, bool, error) {
+	var f io.ReadCloser
+	var err error
+	if fn := ctxt.OpenFile; fn != nil {
+		f, err = fn(path)
+	} else {
+		f, err = os.Open(path)
+	}
+	if err != nil {
+		return "", false, err
+	}
+	data, err := readImportsFast(f)
+	f.Close()
+	if err != nil {
+		return "", false, err
+	}
+	name, err := readPackageName(data)
+	if err != nil {
+		return "", false, err
+	}
+	return name, shouldBuild(ctxt, data, tags), nil
+}
+
 func ReadImports(path string, src interface{}) (pkgname string, imports []string, err error) {
 	rc, err := openReader(&build.Default, path, src)
 	if err != nil {
