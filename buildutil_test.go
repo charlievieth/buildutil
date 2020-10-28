@@ -571,6 +571,75 @@ func TestImportPath(t *testing.T) {
 	}
 }
 
+func TestFixGOPATH(t *testing.T) {
+	var tests = []struct {
+		In, Exp string
+	}{
+		{"/Users/foo/go/src/github.com/charlievieth/buildutil/buildutil_test.go", "/Users/foo/go"},
+		{"/Users/foo/x/go/src/github.com/charlievieth/buildutil/buildutil_test.go", "/Users/foo/x/go"},
+		{"/Users/foo/x/go/buildutil_test.go", build.Default.GOPATH},
+	}
+	for _, x := range tests {
+		ctxt := build.Context{GOROOT: runtime.GOROOT()}
+		fixGOPATH(&ctxt, x.In)
+		if ctxt.GOPATH != x.Exp {
+			t.Errorf("%+v: got: %q want: %q", x, ctxt.GOPATH, x.Exp)
+		}
+	}
+}
+
+func TestEnvMap(t *testing.T) {
+	exp := map[string]string{
+		"a": "",
+		"b": "",
+		"c": "v",
+	}
+	m := envMap([]string{"a", "b=", "c=c", "c=v"})
+	if !reflect.DeepEqual(m, exp) {
+		t.Errorf("got: %q want: %q", m, exp)
+	}
+}
+
+func TestMergeTagArgs(t *testing.T) {
+	exp := []string{"foo", "race", "bar"}
+	tags := mergeTagArgs([]string{"!race", "foo"}, []string{"race", "bar"})
+	if !reflect.DeepEqual(tags, exp) {
+		t.Errorf("got: %q want: %q", tags, exp)
+	}
+}
+
+func TestExtractTagArgs(t *testing.T) {
+	if a := extractTagArgs([]string{"-v"}); a != nil {
+		t.Errorf("got: %v want: %v", a, nil)
+	}
+	exp := []string{"race", "integration"}
+	for _, args := range [][]string{
+		{"-c", "-tags=race,integration"},
+		{"-c", "-tags", "race,integration"},
+		{"-c", "-tags", "race,integration", "--", "-tags=foo"},
+	} {
+		a := extractTagArgs(args)
+		if !reflect.DeepEqual(a, exp) {
+			t.Errorf("%q: got: %q want: %q", args, a, exp)
+		}
+	}
+}
+
+func TestReplaceTagArgs(t *testing.T) {
+	replace := []string{"foo", "bar"}
+	for _, args := range [][]string{
+		{"-c", "-tags=race,integration"},
+		{"-c", "-tags", "race,integration"},
+		{"-c", "-tags", "race,integration", "--", "-tags=foo"},
+	} {
+		newArgs := replaceTagArgs(args, replace)
+		tags := extractTagArgs(newArgs)
+		if !reflect.DeepEqual(tags, replace) {
+			t.Errorf("%q: got: %q want: %q", args, tags, replace)
+		}
+	}
+}
+
 func BenchmarkImportPath(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := ImportPath(&build.Default, CurrentWorkingDirectory)

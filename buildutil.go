@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -236,7 +237,7 @@ func validArch(ctxt *build.Context, list map[string]bool) string {
 				return s
 			}
 		}
-		for _, s := range KnownArchList() {
+		for _, s := range knownArchList {
 			if s != arch {
 				return s
 			}
@@ -273,7 +274,7 @@ func validArch(ctxt *build.Context, list map[string]bool) string {
 			return s
 		}
 	}
-	for _, s := range KnownArchList() {
+	for _, s := range knownArchList {
 		if !negated[s] {
 			return s
 		}
@@ -302,7 +303,7 @@ func validOS(ctxt *build.Context, list map[string]bool) string {
 				return s
 			}
 		}
-		for _, s := range KnownOSList() {
+		for _, s := range knownOSList {
 			if s != os {
 				return s
 			}
@@ -339,7 +340,7 @@ func validOS(ctxt *build.Context, list map[string]bool) string {
 			return s
 		}
 	}
-	for _, s := range KnownOSList() {
+	for _, s := range knownOSList {
 		if !negated[s] {
 			return s
 		}
@@ -367,8 +368,64 @@ func copyContext(orig *build.Context) *build.Context {
 	return ctxt
 }
 
-// TODO: Fix GOPATH as well
+func resolveGOPATH(dir string) (string, bool) {
+	if !strings.Contains(dir, "src") {
+		s, _ := filepath.EvalSymlinks(dir)
+		if !strings.Contains(s, "src") {
+			return dir, false
+		}
+		dir = s
+	}
+
+	dir = filepath.ToSlash(dir)
+	vol := filepath.VolumeName(dir)
+	if vol == "" {
+		vol = "/"
+	}
+
+	a := strings.Split(strings.TrimPrefix(dir, vol), "/")
+	for i, s := range a {
+		if s == "src" {
+			return vol + filepath.ToSlash(filepath.Join(a[:i]...)), true
+		}
+	}
+	return dir, false
+}
+
+func fixGOPATH(ctxt *build.Context, filename string) error {
+	dir := filepath.Dir(filename)
+
+	// fast check for GOROOT/GOPATH
+	if ctxt.GOROOT != "" {
+		if _, ok := hasSubdir(ctxt.GOROOT, dir); ok {
+			return nil
+		}
+	}
+	if ctxt.GOPATH == "" {
+		ctxt.GOPATH = build.Default.GOPATH
+	}
+	if ctxt.GOPATH != "" {
+		for _, root := range splitPathList(ctxt, ctxt.GOPATH) {
+			if _, ok := hasSubdirCtxt(ctxt, root, dir); ok {
+				return nil
+			}
+		}
+	}
+
+	if path, ok := resolveGOPATH(dir); ok {
+		if _, ok := hasSubdirCtxt(ctxt, path, dir); ok {
+			ctxt.GOPATH = path
+			return nil
+		}
+	}
+	return errors.New("failed to resolve GOPATH for file: " + filename)
+}
+
+// MatchContext returns a build.Context that would include filename in a build.
 func MatchContext(orig *build.Context, filename string, src interface{}) (*build.Context, error) {
+	if orig == nil {
+		orig = &build.Default
+	}
 	rc, err := openReader(orig, filename, src)
 	if err != nil {
 		return nil, err
@@ -395,7 +452,8 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 	if ctxt.Compiler == "" {
 		ctxt.Compiler = runtime.Compiler
 	}
-	// TODO Fix GOPATH
+	// TODO: do we actually care about this error ???
+	fixGOPATH(ctxt, filename)
 
 	// TODO: Is it possible to have conflicting filename and +build tags?
 	tags := make(map[string]bool)
@@ -469,6 +527,8 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 				foundArch = make(map[string]bool)
 			}
 			foundArch[tag] = ok
+
+		// WARN: we probably don't want to set this
 		case knownReleaseTag[tag]:
 			if foundReleases == nil {
 				foundReleases = make(map[string]bool)
@@ -516,6 +576,9 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 	for tag, ok := range foundTags {
 		ctxtTags[tag] = ok
 	}
+
+	// WARN: we probably want to overwrite these flags
+	//
 	var buildTags []string // don't overwrite ctxt.BuildTags
 	for tag, ok := range ctxtTags {
 		if ok {
@@ -525,6 +588,129 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 	ctxt.BuildTags = buildTags
 
 	return ctxt, nil
+}
+
+func envMap(a []string) map[string]string {
+	m := make(map[string]string, len(a))
+	for _, s := range a {
+		if i := strings.IndexByte(s, '='); i != -1 {
+			m[s[:i]] = s[i+1:]
+		} else {
+			m[s] = ""
+		}
+	}
+	return m
+}
+
+func mergeTagArgs(old, new []string) []string {
+	if len(old) == 0 {
+		return new
+	}
+	if len(new) == 0 {
+		return old
+	}
+	var args []string
+Loop:
+	for _, arg := range old {
+		s := strings.TrimPrefix(arg, "!")
+		for _, x := range new {
+			if s == strings.TrimPrefix(x, "!") {
+				continue Loop
+			}
+		}
+		args = append(args, arg)
+	}
+	return append(args, new...)
+}
+
+func extractTagArgs(args []string) []string {
+	for i := 0; i < len(args); i++ {
+		switch s := args[i]; {
+		case s == "--":
+			// stop parsing args
+			return nil
+		case s == "-tags":
+			if i < len(args)-1 {
+				return strings.Split(args[i+1], ",")
+			}
+			// invalid -tags argument (ignore)
+			return nil
+		case strings.HasPrefix(s, "-tags="):
+			return strings.Split(strings.TrimPrefix(s, "-tags="), ",")
+		}
+	}
+	return nil
+}
+
+func replaceTagArgs(args, tags []string) []string {
+	a := make([]string, len(args))
+	copy(a, args)
+	for i := 0; i < len(a); i++ {
+		s := a[i]
+		if s == "--" {
+			break // stop parsing args
+		}
+		if s == "-tags" {
+			if i < len(a)-1 {
+				a[i+1] = strings.Join(tags, ",")
+			}
+			break
+		}
+		if strings.HasPrefix(s, "-tags=") {
+			a[i] = "-tags=" + strings.Join(tags, ",")
+			break
+		}
+	}
+	return a
+}
+
+// GoCommand returns an exec.Cmd for the provided build.Context. The Cmd's
+// env is set to that of the Context. The args contains a "-tags" flag it
+// is updated to match the build constraints of the Context otherwise the
+// "-tags" are provided via the GOFLAGS env var.
+func GoCommand(ctxt *build.Context, name string, args ...string) *exec.Cmd {
+	if ctxt == nil {
+		ctxt = &build.Default
+	}
+
+	m := envMap(os.Environ())
+	m["GOPATH"] = ctxt.GOPATH
+	if s := m["GOROOT"]; s != "" && s != ctxt.GOROOT {
+		m["GOROOT"] = ctxt.GOROOT
+	}
+	if ctxt.GOOS != "" {
+		m["GOOS"] = ctxt.GOOS
+	}
+	if ctxt.GOARCH != "" {
+		m["GOARCH"] = ctxt.GOARCH
+	}
+	if ctxt.CgoEnabled {
+		m["CGO_ENABLED"] = "1"
+	} else {
+		m["CGO_ENABLED"] = "0"
+	}
+
+	if len(ctxt.BuildTags) != 0 {
+		// Command line arguments take precedence over the GOFLAGS
+		// environment variable so we have to update the "-tags"
+		// argument, if provided.
+		existingTags := extractTagArgs(args)
+		if len(existingTags) != 0 {
+			args = replaceTagArgs(args, mergeTagArgs(existingTags, ctxt.BuildTags))
+		} else {
+			m["GOFLAGS"] = "-tags=" + strings.Join(ctxt.BuildTags, ",")
+		}
+	}
+
+	env := make([]string, len(m))
+	for k, v := range m {
+		env = append(env, k+"="+v)
+	}
+
+	cmd := exec.Command(name, args...)
+	cmd.Env = env
+
+	return cmd
 }
 
 var slashslash = []byte("//")
