@@ -833,39 +833,25 @@ func KnownArchList() []string {
 	return s
 }
 
-var (
-	knownOS         map[string]bool
-	knownArch       map[string]bool
-	knownReleaseTag map[string]bool
-	knownOSList     []string // goosList
-	knownArchList   []string // goarchList
-)
+func parseFields(fields string) (map[string]bool, []string) {
+	a := strings.Fields(fields)
+	sort.Strings(a)
 
-func init() {
-	goos := strings.Fields(goosList)
-	sort.Strings(goos)
-
-	knownOSList = make([]string, len(goos))
-	copy(knownOSList, goos)
-
-	knownOS = make(map[string]bool, len(goos))
-	for _, v := range goos {
-		knownOS[v] = true
+	m := make(map[string]bool, len(a))
+	for _, s := range a {
+		m[s] = true
 	}
-
-	goarch := strings.Fields(goarchList)
-	sort.Strings(goarch)
-
-	knownArchList = make([]string, len(goarch))
-	copy(knownArchList, goarch)
-
-	knownArch = make(map[string]bool, len(goarch))
-	for _, v := range goarch {
-		knownArch[v] = true
-	}
-
-	knownReleaseTag = make(map[string]bool, len(build.Default.ReleaseTags))
-	for _, v := range build.Default.ReleaseTags {
-		knownReleaseTag[v] = true
-	}
+	return m, a
 }
+
+var (
+	knownOS, knownOSList     = parseFields(goosList)
+	knownArch, knownArchList = parseFields(goarchList)
+	knownReleaseTag          = func() map[string]bool {
+		m := make(map[string]bool, len(build.Default.ReleaseTags))
+		for _, v := range build.Default.ReleaseTags {
+			m[v] = true
+		}
+		return m
+	}()
+)
