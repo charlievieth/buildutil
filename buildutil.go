@@ -7,6 +7,7 @@ package buildutil
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"go/build"
 	"io"
@@ -421,6 +422,8 @@ func fixGOPATH(ctxt *build.Context, filename string) error {
 	return errors.New("failed to resolve GOPATH for file: " + filename)
 }
 
+// TODO: add MatchContextTags()
+
 // MatchContext returns a build.Context that would include filename in a build.
 func MatchContext(orig *build.Context, filename string, src interface{}) (*build.Context, error) {
 	if orig == nil {
@@ -664,11 +667,12 @@ func replaceTagArgs(args, tags []string) []string {
 	return a
 }
 
-// GoCommand returns an exec.Cmd for the provided build.Context. The Cmd's
-// env is set to that of the Context. The args contains a "-tags" flag it
-// is updated to match the build constraints of the Context otherwise the
-// "-tags" are provided via the GOFLAGS env var.
-func GoCommand(ctxt *build.Context, name string, args ...string) *exec.Cmd {
+// GoCommandContext returns an exec.Cmd for the provided build.Context and
+// context.Context.  The Cmd's env is set to that of the Context. The args
+// contains a "-tags" flag it is updated to match the build constraints of
+// the Context otherwise the "-tags" are provided via the GOFLAGS env var.
+func GoCommandContext(ctx context.Context, ctxt *build.Context, name string, args ...string) *exec.Cmd {
+
 	if ctxt == nil {
 		ctxt = &build.Default
 	}
@@ -707,10 +711,18 @@ func GoCommand(ctxt *build.Context, name string, args ...string) *exec.Cmd {
 		env = append(env, k+"="+v)
 	}
 
-	cmd := exec.Command(name, args...)
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = env
 
 	return cmd
+}
+
+// GoCommand returns an exec.Cmd for the provided build.Context. The Cmd's
+// env is set to that of the Context. The args contains a "-tags" flag it
+// is updated to match the build constraints of the Context otherwise the
+// "-tags" are provided via the GOFLAGS env var.
+func GoCommand(ctxt *build.Context, name string, args ...string) *exec.Cmd {
+	return GoCommandContext(context.Background(), ctxt, name, args...)
 }
 
 var slashslash = []byte("//")
