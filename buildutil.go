@@ -25,7 +25,7 @@ var defaultContext = build.Default
 
 // BuildTags adds and build tags found in name or content to allTags.
 func BuildTags(name string, content []byte, allTags map[string]bool) {
-	goodOSArchFile(&defaultContext, name, allTags)
+	goodOSArchFile(&defaultContext, filepath.Base(name), allTags)
 	shouldBuild(&defaultContext, content, allTags)
 }
 
