@@ -1135,11 +1135,20 @@ func BenchmarkIsSubdir(b *testing.B) {
 
 func BenchmarkInGopath(b *testing.B) {
 	ctxt := build.Default
-	ctxt.GOPATH = filepath.FromSlash("/usr/local/go")
-	dir := filepath.FromSlash("/usr/local/go/src/fmt")
-	for i := 0; i < b.N; i++ {
-		inGopath(&ctxt, dir)
-	}
+	b.Run("One", func(b *testing.B) {
+		ctxt.GOPATH = filepath.FromSlash("/usr/local/go")
+		dir := filepath.FromSlash("/usr/local/go/src/fmt")
+		for i := 0; i < b.N; i++ {
+			inGopath(&ctxt, dir)
+		}
+	})
+	b.Run("Second", func(b *testing.B) {
+		ctxt.GOPATH = filepath.FromSlash("/home/username/go" + string(os.PathListSeparator) + "/usr/local/go")
+		dir := filepath.FromSlash("/usr/local/go/src/fmt")
+		for i := 0; i < b.N; i++ {
+			inGopath(&ctxt, dir)
+		}
+	})
 }
 
 func BenchmarkHasSubdir(b *testing.B) {

@@ -15,32 +15,14 @@ import (
 	"golang.org/x/tools/go/buildutil"
 )
 
-// Notes:
-//
-// * Context.importGo() is not used if HasSubdir (or a few other things)
-//   are set. The importGo() invokes the go command and is very slow and also
-//   tries to find everything in the vendor directory, which seems wrong.
-//
-// * For Rename do we need to include vendor directories (skipping them is 2x
-//   faster)?
-
+// DefaultProjectTombstones are the files used by FindProjectRoot to
+// determine the root of a project.
 var DefaultProjectTombstones = []string{
 	".git",
 	"go.mod",
 	"go.work", // go1.18
 	"glide.yaml",
 	"Gopkg.toml",
-}
-
-type ProjectConfig struct {
-	TombstoneFiles []string
-
-	// TODO: support extra root dirs like "repl" and "github.com/*/*"
-	//
-	// Use this (github.com/gobwas/glob):
-	// "github.com/*/*/"
-	// "${GOPATH}/src/github.com/*/*/"
-	Extra []string // "github\.com/[^/]+/[^/]+/	"
 }
 
 var errNotAbsolute = errors.New("path is not absolute")
@@ -443,12 +425,24 @@ func readDir(ctxt *build.Context, path string) ([]fs.FileInfo, error) {
 	return readdir.ReadDir(path)
 }
 
-// TODO: rename
-// TODO: rename "pkgdir" to "baseDirs" or something
-// TODO: constain GOPATH? That is, change the GOPATH to be only the one
-// containing the package
+// ScopedContext returns a build.Context with a ReadDir that is scoped to the
+// directories listed by pkgdirs and the GOROOT. That is, ReadDir when called
+// with an ancestor of pkgdirs will only return immediate ancestors (that lead
+// to the pkgdirs). When called with any of the pkgdirs, GOROOT, or any of their
+// children all results are returned (same as ioutil.ReadDir).
 //
-// NOTE: setting ctxt's ReadDir field to ioutil.ReadDir defeats the purpose of this.
+// A scoped context is designed to limit the search scope of tools that walk the
+// entire GOPATH (e.g. "golang.org/x/tools/refactor/rename"), which can greatly
+// speed up processing time.
+//
+// 	// In the below example we limit the search path to "/go/src/pkg/buildutil".
+// 	ctxt, _ := ScopedContext(&build.Default, "/go/src/pkg/buildutil")
+// 	ctxt.ReadDir("/go")                               // => ["src"]
+// 	ctxt.ReadDir("/go/src")                           // => ["pkg"]
+// 	ctxt.ReadDir("/go/src/pkg")                       // => ["buildutil"]
+// 	ctxt.ReadDir("/go/src/pkg/buildutil")             // => [ALL ENTRIES]
+// 	ctxt.ReadDir("/go/src/pkg/buildutil/contextutil") // => [ALL ENTRIES]
+//
 func ScopedContext(orig *build.Context, pkgdirs ...string) (*build.Context, error) {
 	// TODO: allow no pkgdirs to limit Context to GOROOT?
 	if len(pkgdirs) == 0 {
