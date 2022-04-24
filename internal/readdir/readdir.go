@@ -16,8 +16,6 @@ type fileInfo struct {
 	once sync.Once
 }
 
-func (f *fileInfo) Name() string      { return f.DirEntry.Name() }
-func (f *fileInfo) IsDir() bool       { return f.DirEntry.IsDir() }
 func (f *fileInfo) Mode() fs.FileMode { return f.DirEntry.Type() }
 
 // The Size, ModTime, and Sys are not used by go/build but implement

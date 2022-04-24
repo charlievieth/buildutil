@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"runtime"
 	"testing"
+	"time"
 )
 
 func TestReadDir(t *testing.T) {
@@ -51,6 +52,31 @@ func TestReadDir(t *testing.T) {
 		if t.Failed() {
 			break
 		}
+	}
+}
+
+func TestReadDirError(t *testing.T) {
+	tempdir := t.TempDir()
+	filename := filepath.Join(tempdir, "file.txt")
+	if err := os.WriteFile(filename, []byte("file.txt"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	fis, err := ReadDir(tempdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filename); err != nil {
+		t.Fatal(err)
+	}
+	fi := fis[0]
+	if n := fi.Size(); n != 0 {
+		t.Errorf("Size(): got: %d want: %d", n, 0)
+	}
+	if modTime := fi.ModTime(); !modTime.IsZero() {
+		t.Errorf("ModTime(): got: %s want: %s", modTime, time.Time{})
+	}
+	if sys := fi.Sys(); sys != nil {
+		t.Errorf("Sys(): got: %v want: %v", sys, nil)
 	}
 }
 
