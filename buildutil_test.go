@@ -904,7 +904,6 @@ func BenchmarkShortImport_Overlay(b *testing.B) {
 	// read the files into memory and create an overlay for the build.Context
 	overlay := make(map[string]*nopReadCloser, len(list))
 	for _, name := range list {
-
 		src, err := ioutil.ReadFile(name)
 		if err != nil {
 			b.Fatal(err)
@@ -913,11 +912,12 @@ func BenchmarkShortImport_Overlay(b *testing.B) {
 	}
 	ctxt := build.Default
 	ctxt.OpenFile = func(path string) (io.ReadCloser, error) {
-		rc, ok := overlay[path]
+		rd, ok := overlay[path]
 		if !ok {
 			panic("missing file: " + path)
 		}
-		return rc, nil
+		rd.Reset()
+		return rd, nil
 	}
 
 	benchmarkShortImport(b, &ctxt, list)
