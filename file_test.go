@@ -2,6 +2,7 @@ package buildutil
 
 import (
 	"go/build"
+	"reflect"
 	"runtime"
 	"testing"
 )
@@ -56,6 +57,18 @@ func TestGoodOSArch(t *testing.T) {
 		if goodOSArchFile(&ctxt, test.name, make(map[string]bool)) != test.result {
 			t.Fatalf("goodOSArchFile(%q) != %v", test.name, test.result)
 		}
+	}
+}
+
+func TestGoodOSArchFile_StdLib(t *testing.T) {
+	ctx := &build.Context{BuildTags: []string{"linux"}, GOOS: "darwin"}
+	m := map[string]bool{}
+	want := map[string]bool{"linux": true}
+	if !goodOSArchFile(ctx, "hello_linux.go", m) {
+		t.Errorf("goodOSArchFile(hello_linux.go) = false, want true")
+	}
+	if !reflect.DeepEqual(m, want) {
+		t.Errorf("goodOSArchFile(hello_linux.go) tags = %v, want %v", m, want)
 	}
 }
 

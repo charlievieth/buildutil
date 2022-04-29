@@ -22,9 +22,8 @@ import (
 //
 // An exception: if GOOS=android, then files with GOOS=linux are also matched.
 func goodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) bool {
-	if dot := strings.IndexByte(name, '.'); dot != -1 {
-		name = name[:dot]
-	}
+	// TODO: check if name contains path elements?
+	name, _, _ = cut(name, ".")
 
 	// Before Go 1.4, a file called "linux.go" would be equivalent to having a
 	// build tag "linux" in that file. For Go 1.4 and beyond, we require this
@@ -33,7 +32,7 @@ func goodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) b
 	// systems, such as android, to arrive without breaking existing code with
 	// innocuous source code in "android.go". The easiest fix: cut everything
 	// in the name before the initial _.
-	i := strings.IndexByte(name, '_')
+	i := strings.Index(name, "_")
 	if i < 0 {
 		return true
 	}
@@ -45,32 +44,12 @@ func goodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) b
 	}
 	n := len(l)
 	if n >= 2 && knownOS[l[n-2]] && knownArch[l[n-1]] {
-		if allTags != nil {
-			allTags[l[n-2]] = true
-			allTags[l[n-1]] = true
-		}
-		if l[n-1] != ctxt.GOARCH {
-			return false
-		}
-		if ctxt.GOOS == "android" && l[n-2] == "linux" {
-			return true
-		}
-		return l[n-2] == ctxt.GOOS
+		okArch := matchTag(ctxt, l[n-1], allTags)
+		okOS := matchTag(ctxt, l[n-2], allTags)
+		return okArch && okOS
 	}
-	if n >= 1 && knownOS[l[n-1]] {
-		if allTags != nil {
-			allTags[l[n-1]] = true
-		}
-		if ctxt.GOOS == "android" && l[n-1] == "linux" {
-			return true
-		}
-		return l[n-1] == ctxt.GOOS
-	}
-	if n >= 1 && knownArch[l[n-1]] {
-		if allTags != nil {
-			allTags[l[n-1]] = true
-		}
-		return l[n-1] == ctxt.GOARCH
+	if n >= 1 && (knownOS[l[n-1]] || knownArch[l[n-1]]) {
+		return matchTag(ctxt, l[n-1], allTags)
 	}
 	return true
 }
