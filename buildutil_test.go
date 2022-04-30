@@ -275,35 +275,6 @@ func TestMatchContext_BuildTags(t *testing.T) {
 			t.Errorf("MatchContext - BuildTags: want %s got: %s", expTags, ctx.BuildTags)
 		}
 	}
-
-	{
-		switch runtime.GOOS {
-		case "linux", "darwin", "freebsd", "openbsd", "netbsd":
-			src := "// +build appengine !linux,!darwin,!freebsd,!openbsd,!netbsd\n\n" +
-				"package main\n"
-
-			expTags := []string{"appengine"}
-			orig := &build.Context{}
-
-			ctx, err := MatchContext(orig, "file1", src)
-			if err != nil {
-				t.Error(err)
-			}
-
-			sort.Strings(ctx.BuildTags)
-			if !reflect.DeepEqual(ctx.BuildTags, expTags) {
-				t.Errorf("MatchContext - BuildTags: want %s got: %s", expTags, ctx.BuildTags)
-			}
-			if ctx.GOOS != runtime.GOOS {
-				t.Fatal("GOOS", ctx.GOOS)
-			}
-			if ctx.GOARCH != runtime.GOARCH {
-				t.Fatal("GOARCH", ctx.GOARCH)
-			}
-		default:
-			t.Logf("test cannot run on %q", runtime.GOOS)
-		}
-	}
 }
 
 func TestMatchContext_GOOS(t *testing.T) {

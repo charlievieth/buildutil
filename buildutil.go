@@ -212,9 +212,9 @@ var preferredOSList = [...]string{
 var preferredArchList = [...]string{
 	runtime.GOARCH,
 	"amd64",
-	"arm64",
 	"386",
 	"arm",
+	"arm64",
 	"ppc64",
 }
 
@@ -508,12 +508,6 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 
 	if cgo, ok := tags["cgo"]; ok {
 		ctxt.CgoEnabled = cgo
-	}
-	if tags["appengine"] {
-		ctxt.BuildTags = append(ctxt.BuildTags, "appengine")
-		if shouldBuild(ctxt, data, tags) {
-			return ctxt, nil
-		}
 	}
 
 	// find and match OS, Arch and other build tags
