@@ -99,6 +99,214 @@ func TestMatch(t *testing.T) {
 	nomatch("!", map[string]bool{})
 }
 
+var shouldBuildTests = []struct {
+	name        string
+	content     string
+	tags        map[string]bool
+	binaryOnly  bool
+	shouldBuild bool
+	err         error
+}{
+	{
+		name: "Yes",
+		content: "// +build yes\n\n" +
+			"package main\n",
+		tags:        map[string]bool{"yes": true},
+		shouldBuild: true,
+	},
+	{
+		name: "Yes2",
+		content: "//go:build yes\n" +
+			"package main\n",
+		tags:        map[string]bool{"yes": true},
+		shouldBuild: true,
+	},
+	{
+		name: "Or",
+		content: "// +build no yes\n\n" +
+			"package main\n",
+		tags:        map[string]bool{"yes": true, "no": true},
+		shouldBuild: true,
+	},
+	{
+		name: "Or2",
+		content: "//go:build no || yes\n" +
+			"package main\n",
+		tags:        map[string]bool{"yes": true, "no": true},
+		shouldBuild: true,
+	},
+	{
+		name: "And",
+		content: "// +build no,yes\n\n" +
+			"package main\n",
+		tags:        map[string]bool{"yes": true, "no": true},
+		shouldBuild: false,
+	},
+	{
+		name: "And2",
+		content: "//go:build no && yes\n" +
+			"package main\n",
+		tags:        map[string]bool{"yes": true, "no": true},
+		shouldBuild: false,
+	},
+	{
+		name: "Cgo",
+		content: "// +build cgo\n\n" +
+			"// Copyright The Go Authors.\n\n" +
+			"// This package implements parsing of tags like\n" +
+			"// +build tag1\n" +
+			"package build",
+		tags:        map[string]bool{"cgo": true},
+		shouldBuild: false,
+	},
+	{
+		name: "Cgo2",
+		content: "//go:build cgo\n" +
+			"// Copyright The Go Authors.\n\n" +
+			"// This package implements parsing of tags like\n" +
+			"// +build tag1\n" +
+			"package build",
+		tags:        map[string]bool{"cgo": true},
+		shouldBuild: false,
+	},
+	{
+		name: "AfterPackage",
+		content: "// Copyright The Go Authors.\n\n" +
+			"package build\n\n" +
+			"// shouldBuild checks tags given by lines of the form\n" +
+			"// +build tag\n" +
+			"//go:build tag\n" +
+			"func shouldBuild(content []byte)\n",
+		tags:        map[string]bool{},
+		shouldBuild: true,
+	},
+	{
+		name: "TooClose",
+		content: "// +build yes\n" +
+			"package main\n",
+		tags:        map[string]bool{},
+		shouldBuild: true,
+	},
+	{
+		name: "TooClose2",
+		content: "//go:build yes\n" +
+			"package main\n",
+		tags:        map[string]bool{"yes": true},
+		shouldBuild: true,
+	},
+	{
+		name: "TooCloseNo",
+		content: "// +build no\n" +
+			"package main\n",
+		tags:        map[string]bool{},
+		shouldBuild: true,
+	},
+	{
+		name: "TooCloseNo2",
+		content: "//go:build no\n" +
+			"package main\n",
+		tags:        map[string]bool{"no": true},
+		shouldBuild: false,
+	},
+	{
+		name: "BinaryOnly",
+		content: "//go:binary-only-package\n" +
+			"// +build yes\n" +
+			"package main\n",
+		tags:        map[string]bool{},
+		binaryOnly:  true,
+		shouldBuild: true,
+	},
+	{
+		name: "BinaryOnly2",
+		content: "//go:binary-only-package\n" +
+			"//go:build no\n" +
+			"package main\n",
+		tags:        map[string]bool{"no": true},
+		binaryOnly:  true,
+		shouldBuild: false,
+	},
+	{
+		name: "ValidGoBuild",
+		content: "// +build yes\n\n" +
+			"//go:build no\n" +
+			"package main\n",
+		tags:        map[string]bool{"no": true},
+		shouldBuild: false,
+	},
+	{
+		name: "MissingBuild2",
+		content: "/* */\n" +
+			"// +build yes\n\n" +
+			"//go:build no\n" +
+			"package main\n",
+		tags:        map[string]bool{"no": true},
+		shouldBuild: false,
+	},
+	{
+		name: "Comment1",
+		content: "/*\n" +
+			"//go:build no\n" +
+			"*/\n\n" +
+			"package main\n",
+		tags:        map[string]bool{},
+		shouldBuild: true,
+	},
+	{
+		name: "Comment2",
+		content: "/*\n" +
+			"text\n" +
+			"*/\n\n" +
+			"//go:build no\n" +
+			"package main\n",
+		tags:        map[string]bool{"no": true},
+		shouldBuild: false,
+	},
+	{
+		name: "Comment3",
+		content: "/*/*/ /* hi *//* \n" +
+			"text\n" +
+			"*/\n\n" +
+			"//go:build no\n" +
+			"package main\n",
+		tags:        map[string]bool{"no": true},
+		shouldBuild: false,
+	},
+	{
+		name: "Comment4",
+		content: "/**///go:build no\n" +
+			"package main\n",
+		tags:        map[string]bool{},
+		shouldBuild: true,
+	},
+	{
+		name: "Comment5",
+		content: "/**/\n" +
+			"//go:build no\n" +
+			"package main\n",
+		tags:        map[string]bool{"no": true},
+		shouldBuild: false,
+	},
+}
+
+func TestShouldBuild(t *testing.T) {
+	for _, tt := range shouldBuildTests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &build.Context{BuildTags: []string{"yes"}}
+			tags := map[string]bool{}
+			shouldBuild, binaryOnly, err := shouldBuildX(ctx, []byte(tt.content), tags)
+			if shouldBuild != tt.shouldBuild || binaryOnly != tt.binaryOnly || !reflect.DeepEqual(tags, tt.tags) || err != tt.err {
+				t.Errorf("mismatch:\n"+
+					"have shouldBuild=%v, binaryOnly=%v, tags=%v, err=%v\n"+
+					"want shouldBuild=%v, binaryOnly=%v, tags=%v, err=%v",
+					shouldBuild, binaryOnly, tags, err,
+					tt.shouldBuild, tt.binaryOnly, tt.tags, tt.err)
+			}
+		})
+	}
+}
+
+/*
 type shouldBuildTest struct {
 	src   string
 	name  string
@@ -159,7 +367,7 @@ var shouldBuildTests = []shouldBuildTest{
 	},
 }
 
-func TestShouldBuild(t *testing.T) {
+func TestShouldBuild_XX(t *testing.T) {
 	ctx := &build.Context{BuildTags: []string{"tag1"}}
 
 	for i, x := range shouldBuildTests {
@@ -167,18 +375,20 @@ func TestShouldBuild(t *testing.T) {
 		filename := fmt.Sprintf("file%d", i+1)
 
 		if ok := shouldBuild(ctx, []byte(x.src), m); ok != x.match {
-			t.Errorf("shouldBuild(%s) = %v, want %v", filename, ok, x.match)
+			t.Errorf("%d: shouldBuild(%s) = %v, want %v", i, filename, ok, x.match)
 		}
 		// Test exported wrapper around shouldBuild.
 		if ok := ShouldBuild(ctx, []byte(x.src), m); ok != x.match {
-			t.Errorf("ShouldBuild(%s) = %v, want %v", filename, ok, x.match)
+			t.Errorf("%d: shouldBuild(%s) = %v, want %v", i, filename, ok, x.match)
 		}
 		if !reflect.DeepEqual(m, x.tags) {
-			t.Errorf("shoudBuild(%s) tags = %v, want %v", filename, m, x.tags)
+			t.Errorf("%d: shoudBuild(%s) tags = %v, want %v", i, filename, m, x.tags)
 		}
 	}
 }
+*/
 
+/*
 func TestShortImport(t *testing.T) {
 	ctx := &build.Context{BuildTags: []string{"tag1"}}
 
@@ -201,18 +411,19 @@ func TestShortImport(t *testing.T) {
 		}
 	}
 }
+*/
 
 func TestMatchContext_BuildTags(t *testing.T) {
 
 	// Remove tag
 	{
-		src := "// +build !tag1\n\n" +
+		src := "//go:build !tag1\n\n" +
 			"package main\n"
 		orig := &build.Context{BuildTags: []string{"tag1"}}
 
 		ctx, err := MatchContext(orig, "file1", src)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if len(ctx.BuildTags) != 0 {
 			t.Errorf("MatchContext - BuildTags: want [] got: %s", ctx.BuildTags)
@@ -221,7 +432,7 @@ func TestMatchContext_BuildTags(t *testing.T) {
 
 	// Add tags
 	{
-		src := "// +build tag1 tag2\n\n" +
+		src := "//go:build tag1 && tag2\n\n" +
 			"package main\n"
 
 		expTags := []string{"tag1", "tag2"}
@@ -229,7 +440,7 @@ func TestMatchContext_BuildTags(t *testing.T) {
 
 		ctx, err := MatchContext(orig, "file1", src)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 
 		sort.Strings(ctx.BuildTags)
@@ -240,7 +451,7 @@ func TestMatchContext_BuildTags(t *testing.T) {
 
 	// Add + Remove tags
 	{
-		src := "// +build tag1,tag2,!tag3,tag4\n\n" +
+		src := "//go:build tag1,tag2,!tag3,tag4\n\n" +
 			"package main\n"
 
 		expTags := []string{"tag1", "tag2", "tag4"}
@@ -248,7 +459,7 @@ func TestMatchContext_BuildTags(t *testing.T) {
 
 		ctx, err := MatchContext(orig, "file1", src)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 
 		sort.Strings(ctx.BuildTags)
@@ -259,7 +470,7 @@ func TestMatchContext_BuildTags(t *testing.T) {
 
 	// Handle 'ignore'
 	{
-		src := "// +build ignore\n\n" +
+		src := "//go:build ignore\n\n" +
 			"package main\n"
 
 		expTags := []string{"ignore"}
@@ -267,7 +478,7 @@ func TestMatchContext_BuildTags(t *testing.T) {
 
 		ctx, err := MatchContext(orig, "file1", src)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 
 		sort.Strings(ctx.BuildTags)
@@ -710,4 +921,15 @@ func BenchmarkShortImport_Overlay(b *testing.B) {
 	}
 
 	benchmarkShortImport(b, &ctxt, list)
+}
+
+func BenchmarkMatchContext(b *testing.B) {
+	data, err := ioutil.ReadFile("buildutil.go")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MatchContext(nil, "buildutil.go", data)
+	}
 }

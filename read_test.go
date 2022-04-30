@@ -7,6 +7,8 @@ package buildutil
 import (
 	"bytes"
 	"go/build"
+	"go/parser"
+	"go/token"
 	"io"
 	"strings"
 	"testing"
@@ -286,17 +288,35 @@ func TestReadPackageName(t *testing.T) {
 	}
 }
 
+func parsePackageName(src []byte) (string, error) {
+	fset := token.NewFileSet()
+	// TODO: replace with buildutil
+	f, err := parser.ParseFile(fset, "pkg.go", src, parser.PackageClauseOnly)
+	if err != nil {
+		return "", err
+	}
+	return f.Name.Name, nil
+}
+
 func BenchmarkReadPackageName_Short(b *testing.B) {
-	src := []byte("package foo")
+	src := []byte("package foo\n")
 	for i := 0; i < b.N; i++ {
-		readPackageName(src)
+		// _, err := parsePackageName(src)
+		_, err := readPackageName(src)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
 func BenchmarkReadPackageName_Medium(b *testing.B) {
-	src := []byte("// +build linux\npackage foo")
+	src := []byte("// +build linux\npackage foo\n")
 	for i := 0; i < b.N; i++ {
-		readPackageName(src)
+		// _, err := parsePackageName(src)
+		_, err := readPackageName(src)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
@@ -318,8 +338,13 @@ import "go/build"`
 var LongPackageHeaderBytes = []byte(LongPackageHeader)
 
 func BenchmarkReadPackageName_Long(b *testing.B) {
+	src := LongPackageHeaderBytes
 	for i := 0; i < b.N; i++ {
-		readPackageName(LongPackageHeaderBytes)
+		// _, err := parsePackageName(src)
+		_, err := readPackageName(src)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

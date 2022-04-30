@@ -9,7 +9,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"go/build"
+	"go/build/constraint"
 	"io"
 	"io/ioutil"
 	"os"
@@ -725,7 +727,38 @@ func GoCommand(ctxt *build.Context, name string, args ...string) *exec.Cmd {
 	return GoCommandContext(context.Background(), ctxt, name, args...)
 }
 
-var slashslash = []byte("//")
+var (
+	slashSlash = []byte("//")
+	slashStar  = []byte("/*")
+	starSlash  = []byte("*/")
+	newline    = []byte("\n")
+)
+
+var (
+	bSlashSlash = []byte(slashSlash)
+	bStarSlash  = []byte(starSlash)
+	bSlashStar  = []byte(slashStar)
+	bPlusBuild  = []byte("+build")
+
+	goBuildComment = []byte("//go:build")
+
+	errGoBuildWithoutBuild = errors.New("//go:build comment without // +build comment")
+	errMultipleGoBuild     = errors.New("multiple //go:build comments")
+)
+
+func isGoBuildComment(line []byte) bool {
+	if !bytes.HasPrefix(line, goBuildComment) {
+		return false
+	}
+	line = bytes.TrimSpace(line)
+	rest := line[len(goBuildComment):]
+	return len(rest) == 0 || len(bytes.TrimSpace(rest)) < len(rest)
+}
+
+// Special comment denoting a binary-only package.
+// See https://golang.org/design/2775-binary-only-packages
+// for more about the design of binary-only packages.
+var binaryOnlyComment = []byte("//go:binary-only-package")
 
 // TODO (CEV): Add support for binary only packages
 //
@@ -743,6 +776,12 @@ var slashslash = []byte("//")
 // marks the file as applicable only on Windows and Linux.
 //
 func shouldBuild(ctxt *build.Context, content []byte, allTags map[string]bool) bool {
+	// WARN WARN
+	{
+		ok, _, _ := shouldBuildX(ctxt, content, allTags)
+		return ok
+	}
+
 	// Pass 1. Identify leading run of // comments and blank lines,
 	// which must be followed by a blank line.
 	end := 0
@@ -759,7 +798,7 @@ func shouldBuild(ctxt *build.Context, content []byte, allTags map[string]bool) b
 			end = len(content) - len(p)
 			continue
 		}
-		if !bytes.HasPrefix(line, slashslash) { // Not comment line
+		if !bytes.HasPrefix(line, slashSlash) { // Not comment line
 			break
 		}
 	}
@@ -776,8 +815,8 @@ func shouldBuild(ctxt *build.Context, content []byte, allTags map[string]bool) b
 			p = p[len(p):]
 		}
 		line = bytes.TrimSpace(line)
-		if bytes.HasPrefix(line, slashslash) {
-			line = bytes.TrimSpace(line[len(slashslash):])
+		if bytes.HasPrefix(line, slashSlash) {
+			line = bytes.TrimSpace(line[len(slashSlash):])
 			if len(line) > 0 && line[0] == '+' {
 				// Looks like a comment +line.
 				f := strings.Fields(string(line))
@@ -799,6 +838,180 @@ func shouldBuild(ctxt *build.Context, content []byte, allTags map[string]bool) b
 	return allok
 }
 
+func shouldBuildX(ctxt *build.Context, content []byte, allTags map[string]bool) (shouldBuild, binaryOnly bool, err error) {
+	// Identify leading run of // comments and blank lines,
+	// which must be followed by a blank line.
+	// Also identify any //go:build comments.
+	content, goBuild, sawBinaryOnly, err := parseFileHeader(content)
+	if err != nil {
+		return false, false, err
+	}
+
+	// If //go:build line is present, it controls.
+	// Otherwise fall back to +build processing.
+	switch {
+	case goBuild != nil:
+		x, err := constraint.Parse(string(goBuild))
+		if err != nil {
+			return false, false, fmt.Errorf("parsing //go:build line: %v", err)
+		}
+		shouldBuild = eval(ctxt, x, allTags)
+
+	default:
+		shouldBuild = true
+		p := content
+		for len(p) > 0 {
+			line := p
+			if i := bytes.IndexByte(line, '\n'); i >= 0 {
+				line, p = line[:i], p[i+1:]
+			} else {
+				p = p[len(p):]
+			}
+			line = bytes.TrimSpace(line)
+			if !bytes.HasPrefix(line, bSlashSlash) || !bytes.Contains(line, bPlusBuild) {
+				continue
+			}
+			text := string(line)
+			if !constraint.IsPlusBuild(text) {
+				continue
+			}
+			if x, err := constraint.Parse(text); err == nil {
+				if !eval(ctxt, x, allTags) {
+					shouldBuild = false
+				}
+			}
+		}
+	}
+
+	return shouldBuild, sawBinaryOnly, nil
+}
+
+func parseFileHeader(content []byte) (trimmed, goBuild []byte, sawBinaryOnly bool, err error) {
+	end := 0
+	p := content
+	ended := false       // found non-blank, non-// line, so stopped accepting // +build lines
+	inSlashStar := false // in /* */ comment
+
+Lines:
+	for len(p) > 0 {
+		line := p
+		if i := bytes.IndexByte(line, '\n'); i >= 0 {
+			line, p = line[:i], p[i+1:]
+		} else {
+			p = p[len(p):]
+		}
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 && !ended { // Blank line
+			// Remember position of most recent blank line.
+			// When we find the first non-blank, non-// line,
+			// this "end" position marks the latest file position
+			// where a // +build line can appear.
+			// (It must appear _before_ a blank line before the non-blank, non-// line.
+			// Yes, that's confusing, which is part of why we moved to //go:build lines.)
+			// Note that ended==false here means that inSlashStar==false,
+			// since seeing a /* would have set ended==true.
+			end = len(content) - len(p)
+			continue Lines
+		}
+		if !bytes.HasPrefix(line, slashSlash) { // Not comment line
+			ended = true
+		}
+
+		if !inSlashStar && isGoBuildComment(line) {
+			if goBuild != nil {
+				return nil, nil, false, errMultipleGoBuild
+			}
+			goBuild = line
+		}
+		if !inSlashStar && bytes.Equal(line, binaryOnlyComment) {
+			sawBinaryOnly = true
+		}
+
+	Comments:
+		for len(line) > 0 {
+			if inSlashStar {
+				if i := bytes.Index(line, starSlash); i >= 0 {
+					inSlashStar = false
+					line = bytes.TrimSpace(line[i+len(starSlash):])
+					continue Comments
+				}
+				continue Lines
+			}
+			if bytes.HasPrefix(line, bSlashSlash) {
+				continue Lines
+			}
+			if bytes.HasPrefix(line, bSlashStar) {
+				inSlashStar = true
+				line = bytes.TrimSpace(line[len(bSlashStar):])
+				continue Comments
+			}
+			// Found non-comment text.
+			break Lines
+		}
+	}
+
+	return content[:end], goBuild, sawBinaryOnly, nil
+}
+
+func eval(ctxt *build.Context, x constraint.Expr, allTags map[string]bool) bool {
+	return x.Eval(func(tag string) bool { return matchTag(ctxt, tag, allTags) })
+}
+
+// matchTag reports whether the name is one of:
+//
+//	cgo (if cgo is enabled)
+//	$GOOS
+//	$GOARCH
+//	ctxt.Compiler
+//	linux (if GOOS = android)
+//	solaris (if GOOS = illumos)
+//	tag (if tag is listed in ctxt.BuildTags or ctxt.ReleaseTags)
+//
+// It records all consulted tags in allTags.
+func matchTag(ctxt *build.Context, name string, allTags map[string]bool) bool {
+	if allTags != nil {
+		allTags[name] = true
+	}
+
+	// special tags
+	if ctxt.CgoEnabled && name == "cgo" {
+		return true
+	}
+	if name == ctxt.GOOS || name == ctxt.GOARCH || name == ctxt.Compiler {
+		return true
+	}
+	if ctxt.GOOS == "android" && name == "linux" {
+		return true
+	}
+	if ctxt.GOOS == "illumos" && name == "solaris" {
+		return true
+	}
+	if ctxt.GOOS == "ios" && name == "darwin" {
+		return true
+	}
+
+	// other tags
+	for _, tag := range ctxt.BuildTags {
+		if tag == name {
+			return true
+		}
+	}
+	for _, tag := range ctxt.ToolTags {
+		if tag == name {
+			return true
+		}
+	}
+	for _, tag := range ctxt.ReleaseTags {
+		if tag == name {
+			return true
+		}
+	}
+
+	return false
+}
+
+// TODO(charlie): replace with matchTag
+//
 // match reports whether the name is one of:
 //
 //	$GOOS
@@ -812,6 +1025,9 @@ func shouldBuild(ctxt *build.Context, content []byte, allTags map[string]bool) b
 //	a comma-separated list of any of these
 //
 func match(ctxt *build.Context, name string, allTags map[string]bool, negated bool) bool {
+	// WARN WARN WARN WARN
+	// panic("TODO(charlie): replace with matchTag")
+
 	if name == "" {
 		if allTags != nil {
 			allTags[name] = true
@@ -1053,3 +1269,97 @@ var (
 		return m
 	}()
 )
+
+type fnv32a uint32
+
+func (s *fnv32a) Reset() {
+	const offset32 = 2166136261
+	*s = offset32
+}
+
+func (s *fnv32a) WriteString(data string) (int, error) {
+	const prime32 = 16777619
+	hash := *s
+	for i := 0; i < len(data); i++ {
+		hash ^= fnv32a(data[i])
+		hash *= prime32
+	}
+	*s = hash
+	return len(data), nil
+}
+
+func (s *fnv32a) WriteStringSize(data string) (int, error) {
+	const prime32 = 16777619
+	hash := *s
+	// write the size of the string
+	x := uint64(len(data))
+	for x >= 0x80 {
+		hash ^= fnv32a(byte(x) | 0x80)
+		hash *= prime32
+		x >>= 7
+	}
+	for i := 0; i < len(data); i++ {
+		hash ^= fnv32a(data[i])
+		hash *= prime32
+	}
+	*s = hash
+	return len(data), nil
+}
+
+func (s *fnv32a) WriteByte(c byte) error {
+	const prime32 = 16777619
+	hash := *s
+	hash ^= fnv32a(c)
+	hash *= prime32
+	*s = hash
+	return nil
+}
+
+func (s *fnv32a) WriteBool(b bool) error {
+	if b {
+		return s.WriteByte(1)
+	}
+	return s.WriteByte(0)
+}
+
+func (s *fnv32a) Sum32() uint32 { return uint32(*s) }
+
+func (s *fnv32a) Sum(in []byte) []byte {
+	v := uint32(*s)
+	return append(in, byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
+}
+
+func sorted(a []string) []string {
+	if len(a) <= 1 || sort.StringsAreSorted(a) {
+		return a
+	}
+	s := make([]string, len(a))
+	copy(s, a)
+	sort.Strings(s)
+	return s
+}
+
+func HashContext(ctxt *build.Context, strict bool) uint32 {
+	var h fnv32a
+	h.Reset()
+	h.WriteStringSize(ctxt.GOARCH)
+	h.WriteStringSize(ctxt.GOOS)
+	h.WriteStringSize(ctxt.GOROOT)
+	h.WriteStringSize(ctxt.GOPATH)
+	h.WriteStringSize(ctxt.Dir) // WARN: do we want this when non-strict?
+
+	h.WriteBool(ctxt.CgoEnabled)
+	for _, s := range sorted(ctxt.BuildTags) {
+		h.WriteStringSize(s)
+	}
+
+	if strict {
+		h.WriteBool(ctxt.UseAllFiles)
+		for _, s := range sorted(ctxt.ReleaseTags) {
+			h.WriteStringSize(s)
+		}
+		h.WriteStringSize(ctxt.InstallSuffix)
+	}
+
+	return h.Sum32()
+}

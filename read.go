@@ -29,18 +29,19 @@ func (r *importReader) reset() {
 	}
 }
 
-var importReaderPool sync.Pool
+var importReaderPool = sync.Pool{
+	New: func() interface{} {
+		return &importReader{
+			b:   bufio.NewReader(nil),
+			buf: make([]byte, 0, 128),
+		}
+	},
+}
 
-func getImportReader(rd io.Reader) (r *importReader) {
-	if v := importReaderPool.Get(); v != nil {
-		r = v.(*importReader)
-		r.b.Reset(rd)
-		return r
-	}
-	return &importReader{
-		b:   bufio.NewReader(rd),
-		buf: make([]byte, 0, 128),
-	}
+func getImportReader(rd io.Reader) *importReader {
+	r := importReaderPool.Get().(*importReader)
+	r.b.Reset(rd)
+	return r
 }
 
 func putImportReader(r *importReader) {
