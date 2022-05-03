@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/charlievieth/buildutil/contextutil"
 	"github.com/charlievieth/buildutil/internal/util"
 	"github.com/charlievieth/reonce"
 )
@@ -300,15 +301,9 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 		ctxt.Compiler = runtime.Compiler
 	}
 
-	// WARN WARN WARN WARN WARN WARN WARN WARN WARN
-	//
-	// FIXING THE GOPATH IS SLOW - FIX THAT!!!
-	//
-	// WARN WARN WARN WARN WARN WARN WARN WARN WARN
-	// WARN: do we actually care about this error ???
-	// fixGOPATH(ctxt, filename)
-
-	// TODO: Is it possible to have conflicting filename and +build tags?
+	// We ignore the error here since it's too hard to determine
+	// if it matters.
+	fixGOPATH(ctxt, filename)
 
 	// Any os/arch specified in the filename *must* be respected.
 	var (
@@ -560,28 +555,35 @@ func copyContext(orig *build.Context) *build.Context {
 	return ctxt
 }
 
+func pathContainsSrcDir(s string) bool {
+	if filepath.Separator == '/' {
+		return strings.Contains(s, "/src")
+	}
+	return strings.Contains(s, "/src") || strings.Contains(s, "\\src")
+}
+
 func resolveGOPATH(dir string) (string, bool) {
-	if !strings.Contains(dir, "src") {
-		s, _ := filepath.EvalSymlinks(dir)
-		if !strings.Contains(s, "src") {
-			return dir, false
-		}
-		dir = s
-	}
+	origDir := dir
 
-	dir = filepath.ToSlash(dir)
-	vol := filepath.VolumeName(dir)
-	if vol == "" {
-		vol = "/"
-	}
-
-	a := strings.Split(strings.TrimPrefix(dir, vol), "/")
-	for i, s := range a {
-		if s == "src" {
-			return vol + filepath.ToSlash(filepath.Join(a[:i]...)), true
+	if !pathContainsSrcDir(dir) {
+		dir, _ = filepath.EvalSymlinks(dir)
+		if !pathContainsSrcDir(dir) {
+			return origDir, false
 		}
 	}
-	return dir, false
+
+	for {
+		parent := filepath.Dir(dir)
+		if filepath.Base(dir) == "src" {
+			return parent, true
+		}
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	return origDir, false
 }
 
 // TODO: use or remove
@@ -589,27 +591,23 @@ func fixGOPATH(ctxt *build.Context, filename string) error {
 	dir := filepath.Dir(filename)
 
 	// fast check for GOROOT/GOPATH
-	if ctxt.GOROOT != "" {
-		if _, ok := hasSubdir(ctxt.GOROOT, dir); ok {
-			return nil
-		}
-	}
 	if ctxt.GOPATH == "" {
 		ctxt.GOPATH = build.Default.GOPATH
 	}
-	if ctxt.GOPATH != "" {
-		for _, root := range splitPathList(ctxt, ctxt.GOPATH) {
-			if _, ok := hasSubdirCtxt(ctxt, root, dir); ok {
-				return nil
-			}
+	for _, root := range splitPathList(ctxt, ctxt.GOPATH) {
+		if _, ok := contextutil.HasSubdir(ctxt, root, dir); ok {
+			return nil
+		}
+	}
+	if ctxt.GOROOT != "" {
+		if _, ok := contextutil.HasSubdir(ctxt, ctxt.GOROOT, dir); ok {
+			return nil
 		}
 	}
 
 	if path, ok := resolveGOPATH(dir); ok {
-		if _, ok := hasSubdirCtxt(ctxt, path, dir); ok {
-			ctxt.GOPATH = path
-			return nil
-		}
+		ctxt.GOPATH = path
+		return nil
 	}
-	return errors.New("failed to resolve GOPATH for file: " + filename)
+	return errors.New("failed to resolve GOPATH for file")
 }
