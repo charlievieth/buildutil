@@ -6,6 +6,8 @@ import (
 	"go/build"
 	"io"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
@@ -224,18 +226,72 @@ func TestMatchContext(t *testing.T) {
 }
 
 func TestFixGOPATH(t *testing.T) {
-	var tests = []struct {
-		In, Exp string
-	}{
-		{"/Users/foo/go/src/github.com/charlievieth/buildutil/buildutil_test.go", "/Users/foo/go"},
-		{"/Users/foo/x/go/src/github.com/charlievieth/buildutil/buildutil_test.go", "/Users/foo/x/go"},
-		{"/Users/foo/x/go/buildutil_test.go", build.Default.GOPATH},
+	type gopathTest struct {
+		dir, exp string
+		ok       bool
+	}
+	var tests = []gopathTest{
+		{"/go/src/p", "/go", true},
+		{"/go/foo/p", "/go", true},
+		{"/xgo/src/p", "/xgo:/go", true},
+		{"/goroot/src/p", "/go", true},
+		{"", "", false},
+		{"/", "", false},
+		{"/xgo/foo/p", "", false},
+	}
+
+	switch runtime.GOOS {
+	case "windows", "plan9":
+		// ignore: symlink requiring tests
+	default:
+		// Test symlinks
+		gopath := filepath.Join(t.TempDir(), "go")
+		if err := os.MkdirAll(gopath+"/src/p", 0755); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(gopath, "link")
+		if err := os.Symlink(gopath+"/src", link); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(link + "/p"); err != nil {
+			t.Fatal(err)
+		}
+		exp, err := filepath.EvalSymlinks(gopath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tests = append(tests, gopathTest{
+			dir: filepath.ToSlash(filepath.Join(link, "p")),
+			exp: filepath.ToSlash(exp) + ":/go",
+			ok:  true,
+		})
+	}
+
+	ctxt := build.Default
+	ctxt.GOROOT = "/goroot"
+	ctxt.JoinPath = func(elems ...string) string {
+		return strings.Join(elems, ":")
 	}
 	for _, x := range tests {
-		ctxt := build.Context{GOROOT: runtime.GOROOT()}
-		fixGOPATH(&ctxt, x.In)
-		if ctxt.GOPATH != x.Exp {
-			t.Errorf("%+v: got: %q want: %q", x, ctxt.GOPATH, x.Exp)
+		ctxt.GOPATH = "/go"
+		got, ok := fixGOPATH(&ctxt, x.dir)
+		if got != x.exp || ok != x.ok {
+			t.Errorf("fixGOPATH(%q) = %q, %t; want: %q, %t", x.dir, got, ok, x.exp, x.ok)
+		}
+	}
+}
+
+func TestResolveGOPATH(t *testing.T) {
+	var tests = []struct {
+		in, want string
+	}{
+		{"/go/src/p", "/go"},
+		{"/go/foo/p", "/go/foo/p"},
+	}
+	for _, x := range tests {
+		got, _ := resolveGOPATH(x.in)
+		if got != x.want {
+			t.Errorf("resolveGOPATH(%q) = %q; want: %q", x.in, got, x.want)
 		}
 	}
 }
@@ -249,4 +305,35 @@ func BenchmarkMatchContext(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		MatchContext(nil, "buildutil.go", data)
 	}
+}
+
+func BenchmarkFixGOPATH(b *testing.B) {
+	wd, err := os.Getwd()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.Run("In_GOPATH", func(b *testing.B) {
+		filename := filepath.Join(wd, "match_test.go")
+
+		ctxt := build.Default
+		gopath := ctxt.GOPATH
+		for i := 0; i < b.N; i++ {
+			ctxt.GOPATH = gopath
+			fixGOPATH(&ctxt, filename)
+		}
+	})
+
+	b.Run("Outside_GOPATH", func(b *testing.B) {
+		tempdir := b.TempDir()
+		filename := filepath.Join(tempdir, "src/github.com/charlievieth/buildutil/match_test.go")
+		b.ResetTimer()
+
+		ctxt := build.Default
+		gopath := ctxt.GOPATH
+		for i := 0; i < b.N; i++ {
+			ctxt.GOPATH = gopath
+			fixGOPATH(&ctxt, filename)
+		}
+	})
 }

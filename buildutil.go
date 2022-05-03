@@ -579,16 +579,20 @@ func hasSubdirCtxt(ctxt *build.Context, root, dir string) (rel string, ok bool) 
 	return hasSubdir(rootSym, dirSym)
 }
 
+// isSubdir reports if dir is within root by performing lexical analysis only.
+func isSubdir(root, dir string) bool {
+	n := len(root)
+	return 0 < n && n < len(dir) && dir[0:n] == root && os.IsPathSeparator(dir[n])
+}
+
 // hasSubdir reports if dir is within root by performing lexical analysis only.
+//
+// NOTE: this is a faster alloc free version of: go/build.hasSubdir
 func hasSubdir(root, dir string) (rel string, ok bool) {
-	const sep = string(filepath.Separator)
-	if !strings.HasSuffix(root, sep) {
-		root += sep
+	if isSubdir(root, dir) {
+		return filepath.ToSlash(dir[len(root)+1:]), true
 	}
-	if !strings.HasPrefix(dir, root) {
-		return "", false
-	}
-	return filepath.ToSlash(dir[len(root):]), true
+	return "", false
 }
 
 // gopath returns the list of Go path directories.

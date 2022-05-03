@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/charlievieth/buildutil/contextutil"
 	"github.com/charlievieth/buildutil/internal/util"
 	"github.com/charlievieth/reonce"
 )
@@ -303,7 +302,9 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 
 	// We ignore the error here since it's too hard to determine
 	// if it matters.
-	fixGOPATH(ctxt, filename)
+	if gopath, ok := fixGOPATH(ctxt, filename); ok {
+		ctxt.GOPATH = gopath
+	}
 
 	// Any os/arch specified in the filename *must* be respected.
 	var (
@@ -573,11 +574,14 @@ func resolveGOPATH(dir string) (string, bool) {
 	}
 
 	for {
-		parent := filepath.Dir(dir)
-		if filepath.Base(dir) == "src" {
+		parent, name := filepath.Split(dir)
+		if parent != "" {
+			parent = parent[:len(parent)-1]
+		}
+		if name == "src" {
 			return parent, true
 		}
-		if parent == dir {
+		if parent == "" || parent == dir {
 			break
 		}
 		dir = parent
@@ -587,27 +591,30 @@ func resolveGOPATH(dir string) (string, bool) {
 }
 
 // TODO: use or remove
-func fixGOPATH(ctxt *build.Context, filename string) error {
+func fixGOPATH(ctxt *build.Context, filename string) (string, bool) {
 	dir := filepath.Dir(filename)
 
 	// fast check for GOROOT/GOPATH
-	if ctxt.GOPATH == "" {
-		ctxt.GOPATH = build.Default.GOPATH
+	gopath := ctxt.GOPATH
+	if gopath == "" {
+		gopath = build.Default.GOPATH
 	}
-	for _, root := range splitPathList(ctxt, ctxt.GOPATH) {
-		if _, ok := contextutil.HasSubdir(ctxt, root, dir); ok {
-			return nil
+	for _, root := range splitPathList(ctxt, gopath) {
+		if _, ok := hasSubdir(root, dir); ok {
+			return gopath, true
 		}
 	}
 	if ctxt.GOROOT != "" {
-		if _, ok := contextutil.HasSubdir(ctxt, ctxt.GOROOT, dir); ok {
-			return nil
+		if _, ok := hasSubdir(ctxt.GOROOT, dir); ok {
+			return gopath, true
 		}
 	}
 
 	if path, ok := resolveGOPATH(dir); ok {
-		ctxt.GOPATH = path
-		return nil
+		if ctxt.SplitPathList == nil && ctxt.GOPATH != "" {
+			path = path + string(filepath.ListSeparator) + ctxt.GOPATH
+		}
+		return path, true
 	}
-	return errors.New("failed to resolve GOPATH for file")
+	return "", false
 }
