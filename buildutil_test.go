@@ -653,9 +653,7 @@ func shortImportFiles(b *testing.B) []string {
 func benchmarkShortImport(b *testing.B, ctxt *build.Context, list []string) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for _, path := range list {
-			ShortImport(ctxt, path)
-		}
+		ShortImport(ctxt, list[i%len(list)])
 	}
 }
 
