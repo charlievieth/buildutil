@@ -912,32 +912,32 @@ func TestMinImportDir(t *testing.T) {
 	})
 
 	t.Run("GOPATH", func(t *testing.T) {
-		const pkgName = "github.com/charlievieth/buildutil/contextutil"
-
-		dir, err := os.Getwd()
-		if err != nil {
+		gopath := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(gopath, "src/p1/internal/p2"), 0755); err != nil {
 			t.Fatal(err)
 		}
+		const pkgName = "p1/internal/p2"
 
-		n := strings.Count(pkgName, "/") + 1
-		srcRoot := dir
-		for i := 0; i < n; i++ {
-			srcRoot = filepath.Dir(srcRoot)
+		for _, dir := range []string{"p1", "p1/internal/p2"} {
+			pkg := filepath.Base(dir)
+			name := filepath.Join(gopath, "src", dir, pkg+".go")
+			if err := os.WriteFile(name, []byte("package "+pkg+"\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
 		}
-		gopath := filepath.Dir(srcRoot)
 
 		ctxt := copyContext(&build.Default)
 		ctxt.GOPATH = gopath
 
-		pkg, err := minImportDir(ctxt, dir)
+		pkg, err := minImportDir(ctxt, filepath.Join(gopath, "src/p1/internal/p2"))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		exp := minPackage{
-			ImportPath: "github.com/charlievieth/buildutil/contextutil",
+			ImportPath: pkgName,
 			Root:       ctxt.GOPATH,
-			SrcRoot:    srcRoot,
+			SrcRoot:    filepath.Join(gopath, "src"),
 			Goroot:     false,
 		}
 		if *pkg != exp {
