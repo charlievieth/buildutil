@@ -267,12 +267,24 @@ func inGopath(ctxt *build.Context, dir string) bool {
 			break
 		}
 		p := s[:n]
-		if p == dir || isSubdir(p, dir) || isSubdir(filepath.Clean(p), dir) {
+		if p == dir || isSubdir(p, dir) {
 			return true
+		}
+		if p != "" {
+			p = filepath.Clean(p)
+			if p == dir || isSubdir(p, dir) {
+				return true
+			}
 		}
 		s = s[n+1:]
 	}
-	return s == dir || isSubdir(s, dir) || isSubdir(filepath.Clean(s), dir)
+	if s != "" {
+		s = filepath.Clean(s)
+		if s == dir || isSubdir(s, dir) {
+			return true
+		}
+	}
+	return false
 }
 
 func sameFile(name, base string, baseInfo os.FileInfo) bool {
