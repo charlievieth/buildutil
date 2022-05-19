@@ -56,9 +56,19 @@ jobs:
     #   run: RICHGO_FORCE_COLOR=1 PATH=$HOME/go/bin/:$PATH richgo test -run TestGoCommandAll -gocommand-all
 
   test-win:
+    strategy:
+      fail-fast: false
+      matrix:
+        go:
+        - 17
+        - 18
     name: 'windows | 1.${{ matrix.go }}.x'
     runs-on: windows-latest
     steps:
+
+    - uses: actions/setup-go@v3
+      with:
+        go-version: 1.${{ matrix.go }}.x
 
     - uses: actions/checkout@v3
 
