@@ -56,6 +56,11 @@ func TestReadDir(t *testing.T) {
 }
 
 func TestReadDirError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// We can't run this test since on Windows the FileInfo is populated
+		// in ReadDir - unlike Unix* where it is lazily populated.
+		t.Skip("skipping: test not applicable on Windows")
+	}
 	tempdir := t.TempDir()
 	filename := filepath.Join(tempdir, "file.txt")
 	if err := os.WriteFile(filename, []byte("file.txt"), 0644); err != nil {
