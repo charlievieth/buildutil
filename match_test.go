@@ -233,7 +233,7 @@ func TestFixGOPATH(t *testing.T) {
 	var tests = []gopathTest{
 		{"/go/src/p", "/go", true},
 		{"/go/foo/p", "/go", true},
-		{"/xgo/src/p", "/xgo:/go", true},
+		{"/xgo/src/p", "/xgo" + string(os.PathListSeparator) + "/go", true},
 		{"/goroot/src/p", "/go", true},
 		{"", "", false},
 		{"/", "", false},
@@ -268,12 +268,17 @@ func TestFixGOPATH(t *testing.T) {
 	}
 
 	ctxt := build.Default
-	ctxt.GOROOT = "/goroot"
-	ctxt.JoinPath = func(elems ...string) string {
-		return strings.Join(elems, ":")
+	ctxt.GOROOT = filepath.Clean("/goroot")
+	for i, x := range tests {
+		if x.dir != "" {
+			tests[i].dir = filepath.Clean(x.dir)
+		}
+		if x.exp != "" {
+			tests[i].exp = filepath.Clean(x.exp)
+		}
 	}
 	for _, x := range tests {
-		ctxt.GOPATH = "/go"
+		ctxt.GOPATH = filepath.Clean("/go")
 		got, ok := fixGOPATH(&ctxt, x.dir)
 		if got != x.exp || ok != x.ok {
 			t.Errorf("fixGOPATH(%q) = %q, %t; want: %q, %t", x.dir, got, ok, x.exp, x.ok)
