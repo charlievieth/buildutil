@@ -534,8 +534,7 @@ func TestImportPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wd = filepath.ToSlash(wd)
-	var importPathTests = []string{
+	importPathTests := []string{
 		".",
 		"os",
 		"net/http",
@@ -545,6 +544,9 @@ func TestImportPath(t *testing.T) {
 		filepath.Join(wd, "testdata"),
 		filepath.Join(wd, "vendor", "does_not_exit"),
 		"package-does-not-exist-123ABC",
+	}
+	for i, s := range importPathTests {
+		importPathTests[i] = filepath.ToSlash(s)
 	}
 
 	ctxt := build.Default
@@ -557,13 +559,13 @@ func TestImportPath(t *testing.T) {
 			t.Fatalf("%d: failed to import directory %q: %v", i, dir, err)
 		}
 		if buildErr != nil && err == nil {
-			t.Fatalf("%d: expected error for directory %q found %v, want %v", i, dir, err, buildErr)
+			t.Fatalf("%d: expected error for directory %q found: %v, want: %v", i, dir, err, buildErr)
 		}
 		if err != nil && buildErr != nil && buildErr.Error() != err.Error() {
-			t.Fatalf("%d: error mismatch for directory %q, found %v, want %v", i, dir, err, buildErr)
+			t.Fatalf("%d: error mismatch for directory %q, found: %v, want: %v", i, dir, err, buildErr)
 		}
 		if path != pkg.ImportPath {
-			t.Fatalf("%d: Import succeeded but found %q, want %q", i, path, pkg.ImportPath)
+			t.Fatalf("%d: Import succeeded but found: %q, want: %q", i, path, pkg.ImportPath)
 		}
 	}
 }

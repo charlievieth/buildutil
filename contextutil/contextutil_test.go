@@ -141,6 +141,7 @@ func TestContainingDirectory_FakeContext(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		dir = filepath.ToSlash(dir)
 		if dir != "/go/src/modpkg" {
 			t.Errorf("Dir want: %q got: %q", "/go/src/modpkg", dir)
 		}
@@ -262,6 +263,7 @@ func TestFindProjectRoot_FakeContext(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		dir = filepath.ToSlash(dir)
 		if dir != "/go/src/modpkg" {
 			t.Errorf("Dir want: %q got: %q", "/go/src/modpkg", dir)
 		}
