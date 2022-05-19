@@ -12,10 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -143,47 +141,25 @@ func TestGoCommandAll(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	numCPU := runtime.NumCPU()
-	if numCPU < 2 {
-		numCPU = 2
-	}
-	if numCPU > 16 {
-		numCPU = 16
-	}
-	var wg sync.WaitGroup
-	ch := make(chan string, numCPU)
-	orig := build.Default
+	for i := range names {
+		name := names[i]
+		t.Run(filepath.Base(name), func(t *testing.T) {
+			t.Parallel()
 
-	for i := 0; i < numCPU; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for name := range ch {
-				ctxt, err := MatchContext(&orig, name, nil)
-				if err != nil {
-					t.Errorf("%s: %v\n", filepath.Base(name), err)
-					continue
-				}
-
-				cmd := GoCommand(ctxt, "go", "list", "-json")
-				cmd.Dir = dir
-				cmd.Stdout = nil
-				var stderr bytes.Buffer
-				cmd.Stderr = &stderr
-
-				if err := cmd.Run(); err != nil {
-					t.Errorf("%s: %s\n\t%s\n", filepath.Base(name), err,
-						bytes.TrimSpace(stderr.Bytes()))
-					continue
-				}
+			orig := build.Default
+			ctxt, err := MatchContext(&orig, name, nil)
+			if err != nil {
+				t.Fatal(err)
 			}
-		}()
+
+			cmd := GoCommand(ctxt, "go", "list", "-json")
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Errorf("%s: %s\n\t%s\n", filepath.Base(name), err,
+					bytes.TrimSpace(out))
+			}
+		})
 	}
-	for _, name := range names {
-		ch <- name
-	}
-	close(ch)
-	wg.Wait()
 }
 
 func createCommandTestFiles(t *testing.T) string {
