@@ -52,8 +52,8 @@ jobs:
     - name: Test Race
       run: RICHGO_FORCE_COLOR=1 PATH=$HOME/go/bin/:$PATH richgo test -v -race ./...
 
-    - name: Test GoCommandAll
-      run: RICHGO_FORCE_COLOR=1 PATH=$HOME/go/bin/:$PATH richgo test -run TestGoCommandAll -gocommand-all
+    # - name: Test GoCommandAll
+    #   run: RICHGO_FORCE_COLOR=1 PATH=$HOME/go/bin/:$PATH richgo test -run TestGoCommandAll -gocommand-all
 
   test-win:
     name: 'windows | 1.${{ matrix.go }}.x'
