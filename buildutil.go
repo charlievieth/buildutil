@@ -485,7 +485,7 @@ func ImportPath(ctxt *build.Context, dir string) (string, error) {
 		return "", errors.New("empty source dir")
 	}
 	if !isDir(ctxt, dir) {
-		return ".", errors.New("cannot find package \".\" in:\n\t" + dir)
+		return ".", errors.New("cannot find package \".\" in:\n\t" + filepath.FromSlash(dir))
 	}
 	importPath := "."
 	if !strings.HasPrefix(dir, ctxt.GOROOT) {

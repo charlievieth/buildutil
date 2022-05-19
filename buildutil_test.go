@@ -552,21 +552,24 @@ func TestImportPath(t *testing.T) {
 	ctxt := build.Default
 	ctxt.GOPATH = ""
 	for i, dir := range importPathTests {
-		pkg, buildErr := ctxt.ImportDir(dir, build.FindOnly)
+		t.Run("", func(t *testing.T) {
+			dir = filepath.ToSlash(dir)
+			pkg, buildErr := ctxt.ImportDir(dir, build.FindOnly)
 
-		path, err := ImportPath(&ctxt, dir)
-		if err != nil && buildErr == nil {
-			t.Fatalf("%d: failed to import directory %q: %v", i, dir, err)
-		}
-		if buildErr != nil && err == nil {
-			t.Fatalf("%d: expected error for directory %q found: %v, want: %v", i, dir, err, buildErr)
-		}
-		if err != nil && buildErr != nil && buildErr.Error() != err.Error() {
-			t.Fatalf("%d: error mismatch for directory %q, found: %v, want: %v", i, dir, err, buildErr)
-		}
-		if path != pkg.ImportPath {
-			t.Fatalf("%d: Import succeeded but found: %q, want: %q", i, path, pkg.ImportPath)
-		}
+			path, err := ImportPath(&ctxt, dir)
+			if err != nil && buildErr == nil {
+				t.Fatalf("%d: failed to import directory %q: %v", i, dir, err)
+			}
+			if buildErr != nil && err == nil {
+				t.Fatalf("%d: expected error for directory %q found: %v, want: %v", i, dir, err, buildErr)
+			}
+			if err != nil && buildErr != nil && buildErr.Error() != err.Error() {
+				t.Fatalf("%d: error mismatch for directory %q, found: %q, want: %q", i, dir, err.Error(), buildErr.Error())
+			}
+			if path != pkg.ImportPath {
+				t.Fatalf("%d: Import succeeded but found: %q, want: %q", i, path, pkg.ImportPath)
+			}
+		})
 	}
 }
 
