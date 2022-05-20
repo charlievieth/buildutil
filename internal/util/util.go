@@ -93,7 +93,14 @@ func (e *Environ) Environ() []string { return e.env }
 
 func (e *Environ) Index(key string) int {
 	n := len(key)
+	if n <= 0 {
+		return -1
+	}
+	ch := key[0]
 	for i, s := range e.env {
+		if len(s) == 0 || s[0] != ch {
+			continue
+		}
 		// Checking len(s) twice is required for bounds-check-elimination
 		if len(s) > n && s[0:n] == key && n < len(s) /* BCE */ && s[n] == '=' {
 			return i
