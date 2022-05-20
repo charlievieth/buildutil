@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [ master ]
 
-env:
-  GO111MODULE: on
-
 jobs:
   test-unix:
     strategy:
@@ -40,11 +37,10 @@ jobs:
       run: |
         export GOBIN=$HOME/go/bin
         case "${{ matrix.go }}" in
-          16|17|18) _version='@latest';;
+          17|18) _version='@latest';;
           *) _version='';;
         esac
         go install github.com/kyoh86/richgo"${_version}"
-        go install github.com/mitchellh/gox"${_version}"
 
     - name: Test
       run: RICHGO_FORCE_COLOR=1 PATH=$HOME/go/bin/:$PATH richgo test -v ./...
@@ -60,7 +56,6 @@ jobs:
       fail-fast: false
       matrix:
         go:
-        - 17
         - 18
     name: 'windows | 1.${{ matrix.go }}.x'
     runs-on: windows-latest
