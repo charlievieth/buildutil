@@ -283,7 +283,7 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 	}
 
 	// copy
-	ctxt := copyContext(orig)
+	ctxt := util.CopyContext(orig)
 
 	// init
 	if ctxt.GOARCH == "" {
@@ -545,15 +545,6 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 	// TODO: add additional context to the error (such as
 	// the "//go:build" directive).
 	return nil, &MatchError{Path: filename, Err: ErrMatchContext}
-}
-
-func copyContext(orig *build.Context) *build.Context {
-	tmp := *orig // make a copy
-	ctxt := &tmp
-	ctxt.BuildTags = util.DuplicateStrings(orig.BuildTags)
-	ctxt.ToolTags = util.DuplicateStrings(orig.ToolTags)
-	ctxt.ReleaseTags = util.DuplicateStrings(orig.ReleaseTags)
-	return ctxt
 }
 
 func pathContainsSrcDir(s string) bool {

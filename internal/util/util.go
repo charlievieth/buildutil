@@ -1,6 +1,7 @@
 package util
 
 import (
+	"go/build"
 	"os"
 	"strings"
 )
@@ -126,4 +127,36 @@ func (e *Environ) Set(key, value string) {
 	} else {
 		e.env = append(e.env, key+"="+value)
 	}
+}
+
+func CopyContext(orig *build.Context) *build.Context {
+	tmp := *orig // make a copy
+	ctxt := &tmp
+
+	// Use one backing string slice
+	n := len(ctxt.BuildTags) + len(ctxt.ToolTags) + len(ctxt.ReleaseTags)
+	a := make([]string, n)
+	if n := len(ctxt.BuildTags); n != 0 {
+		copy(a, ctxt.BuildTags)
+		ctxt.BuildTags = a[0:n:n]
+		a = a[n:]
+	} else {
+		ctxt.BuildTags = nil
+	}
+	if n := len(ctxt.ToolTags); n != 0 {
+		copy(a, ctxt.ToolTags)
+		ctxt.ToolTags = a[0:n:n]
+		a = a[n:]
+	} else {
+		ctxt.ToolTags = nil
+	}
+	if n := len(ctxt.ReleaseTags); n != 0 {
+		copy(a, ctxt.ReleaseTags)
+		ctxt.ReleaseTags = a[0:n:n]
+		a = a[n:]
+	} else {
+		ctxt.ReleaseTags = nil
+	}
+
+	return ctxt
 }

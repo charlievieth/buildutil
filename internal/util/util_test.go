@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"go/build"
 	"math/rand"
 	"reflect"
 	"strconv"
@@ -95,6 +96,77 @@ func TestEnviron(t *testing.T) {
 	}
 }
 
+func TestCopyContext(t *testing.T) {
+	orig := build.Default
+	orig.BuildTags = []string{"test"}
+	orig.ToolTags = []string{
+		"goexperiment.regabiwrappers",
+		"goexperiment.regabireflect",
+		"goexperiment.regabiargs",
+		"goexperiment.pacerredesign",
+	}
+	orig.ReleaseTags = []string{
+		"go1.1", "go1.2", "go1.3", "go1.4", "go1.5", "go1.6", "go1.7",
+		"go1.8", "go1.9", "go1.10", "go1.11", "go1.12", "go1.13", "go1.14",
+		"go1.15", "go1.16", "go1.17", "go1.18",
+	}
+	ctxt := CopyContext(&orig)
+	type valuePair struct {
+		got, want interface{}
+	}
+	fields := map[string]valuePair{
+		"GOARCH":      {ctxt.GOARCH, orig.GOARCH},
+		"GOOS":        {ctxt.GOOS, orig.GOOS},
+		"GOROOT":      {ctxt.GOROOT, orig.GOROOT},
+		"GOPATH":      {ctxt.GOPATH, orig.GOPATH},
+		"Dir":         {ctxt.Dir, orig.Dir},
+		"CgoEnabled":  {ctxt.CgoEnabled, orig.CgoEnabled},
+		"UseAllFiles": {ctxt.UseAllFiles, orig.UseAllFiles},
+		"Compiler":    {ctxt.Compiler, orig.Compiler},
+		"BuildTags":   {ctxt.BuildTags, orig.BuildTags},
+		"ToolTags":    {ctxt.ToolTags, orig.ToolTags},
+		"ReleaseTags": {ctxt.ReleaseTags, orig.ReleaseTags},
+	}
+	for name, val := range fields {
+		if !reflect.DeepEqual(val.got, val.want) {
+			t.Errorf("%s: got: %v want: %v", name, val.got, val.want)
+		}
+	}
+
+	// Make sure append does not overwrite the neighboring slice
+	ctxt.BuildTags = append(ctxt.BuildTags, "a")
+	ctxt.BuildTags = ctxt.BuildTags[:len(ctxt.BuildTags)-1]
+	ctxt.ToolTags = append(ctxt.ToolTags, "a")
+	ctxt.ToolTags = ctxt.ToolTags[:len(ctxt.ToolTags)-1]
+	ctxt.ReleaseTags = append(ctxt.ReleaseTags, "a")
+	ctxt.ReleaseTags = ctxt.ReleaseTags[:len(ctxt.ReleaseTags)-1]
+	for name, val := range fields {
+		if !reflect.DeepEqual(val.got, val.want) {
+			t.Errorf("%s: got: %v want: %v", name, val.got, val.want)
+		}
+	}
+
+	// Test that we made a copy by modifying the original
+	for i, s := range orig.BuildTags {
+		orig.BuildTags[i] = strings.ToUpper(s)
+	}
+	for i, s := range orig.ToolTags {
+		orig.ToolTags[i] = strings.ToUpper(s)
+	}
+	for i, s := range orig.ReleaseTags {
+		orig.ReleaseTags[i] = strings.ToUpper(s)
+	}
+	if reflect.DeepEqual(ctxt.BuildTags, orig.BuildTags) {
+		t.Errorf("failed to copy BuildTags %q", ctxt.BuildTags)
+	}
+	if reflect.DeepEqual(ctxt.ToolTags, orig.ToolTags) {
+		t.Errorf("failed to copy ToolTags %q", ctxt.ToolTags)
+	}
+	if reflect.DeepEqual(ctxt.ReleaseTags, orig.ReleaseTags) {
+		t.Errorf("failed to copy ReleaseTags %q", ctxt.ReleaseTags)
+	}
+}
+
 func BenchmarkStringsSame_Long(b *testing.B) {
 	a := make([]string, 0, 26)
 	for i := rune('a'); i <= 'z'; i++ {
@@ -123,5 +195,24 @@ func BenchmarkStringsSame_Long(b *testing.B) {
 				StringsSame(a1, a2)
 			}
 		})
+	}
+}
+
+func BenchmarkCopyContext(b *testing.B) {
+	ctxt := build.Default
+	ctxt.BuildTags = []string{"test"}
+	ctxt.ToolTags = []string{
+		"goexperiment.regabiwrappers",
+		"goexperiment.regabireflect",
+		"goexperiment.regabiargs",
+		"goexperiment.pacerredesign",
+	}
+	ctxt.ReleaseTags = []string{
+		"go1.1", "go1.2", "go1.3", "go1.4", "go1.5", "go1.6", "go1.7",
+		"go1.8", "go1.9", "go1.10", "go1.11", "go1.12", "go1.13", "go1.14",
+		"go1.15", "go1.16", "go1.17", "go1.18",
+	}
+	for i := 0; i < b.N; i++ {
+		CopyContext(&ctxt)
 	}
 }

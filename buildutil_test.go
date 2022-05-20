@@ -56,36 +56,6 @@ func TestPreferredArchList(t *testing.T) {
 	testPreferredList(t, PreferredArchList, arches)
 }
 
-func TestCopyContext(t *testing.T) {
-	orig := &build.Context{
-		BuildTags:   []string{"b1", "b2", "b3"},
-		ToolTags:    []string{"t1", "t2", "t3"},
-		ReleaseTags: []string{"r1", "r2", "r3"},
-	}
-	ctxt := copyContext(orig)
-	if !reflect.DeepEqual(orig.BuildTags, ctxt.BuildTags) {
-		t.Errorf("BuildTags: got: %q want: %q", orig.BuildTags, ctxt.BuildTags)
-	}
-	if !reflect.DeepEqual(orig.ToolTags, ctxt.ToolTags) {
-		t.Errorf("ToolTags: got: %q want: %q", orig.ToolTags, ctxt.ToolTags)
-	}
-	if !reflect.DeepEqual(orig.ReleaseTags, ctxt.ReleaseTags) {
-		t.Errorf("ReleaseTags: got: %q want: %q", orig.ReleaseTags, ctxt.ReleaseTags)
-	}
-	orig.BuildTags[0] = "nope"
-	orig.ToolTags[0] = "nope"
-	orig.ReleaseTags[0] = "nope"
-	if reflect.DeepEqual(orig.BuildTags, ctxt.BuildTags) {
-		t.Error("BuildTags: did not copy BuildTags slice")
-	}
-	if reflect.DeepEqual(orig.ToolTags, ctxt.ToolTags) {
-		t.Error("ToolTags: did not copy ToolTags slice")
-	}
-	if reflect.DeepEqual(orig.ReleaseTags, ctxt.ReleaseTags) {
-		t.Error("ReleaseTags: did not copy ReleaseTags slice")
-	}
-}
-
 var shouldBuildTests = []struct {
 	name        string
 	content     string
@@ -505,7 +475,7 @@ func init() {
 
 func TestGoodOSArchFile(t *testing.T) {
 	for _, x := range goodOSArchFileTests {
-		ctxt := copyContext(&build.Default)
+		ctxt := build.Default
 		if x.GOOS != "" {
 			ctxt.GOOS = x.GOOS
 		}
@@ -513,7 +483,7 @@ func TestGoodOSArchFile(t *testing.T) {
 			ctxt.GOARCH = x.GOARCH
 		}
 		allTags := make(map[string]bool)
-		got := goodOSArchFile(ctxt, x.filename, allTags)
+		got := goodOSArchFile(&ctxt, x.filename, allTags)
 		var tags []string
 		for name := range allTags {
 			tags = append(tags, name)

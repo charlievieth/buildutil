@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/charlievieth/buildutil/internal/util"
 )
 
 var testMatchWalkGOROOT = flag.Bool("walk-goroot", false,
@@ -147,7 +149,7 @@ func testMatchContextWalkDirectory(t *testing.T, root string, expectedErrors map
 		mu     sync.Mutex // protect failed
 		wg     sync.WaitGroup
 	)
-	orig := copyContext(&build.Default)
+	orig := util.CopyContext(&build.Default)
 	ch := make(chan string, 64)
 	for i := 0; i < 2; i++ {
 		wg.Add(1)

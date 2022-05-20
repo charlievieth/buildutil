@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/charlievieth/buildutil/internal/readdir"
+	"github.com/charlievieth/buildutil/internal/util"
 	"golang.org/x/tools/go/buildutil"
 )
 
@@ -61,13 +62,13 @@ func TestAbsPath(t *testing.T) {
 	}
 
 	t.Run("Abs", func(t *testing.T) {
-		ctxt := copyContext(&build.Default)
+		ctxt := util.CopyContext(&build.Default)
 		test(t, ctxt, wd, wd)
 	})
 
 	t.Run("Clean", func(t *testing.T) {
 		const sep = string(filepath.Separator)
-		ctxt := copyContext(&build.Default)
+		ctxt := util.CopyContext(&build.Default)
 		dir := strings.ReplaceAll(wd, sep, sep+sep) + sep
 		test(t, ctxt, dir, wd)
 
@@ -81,7 +82,7 @@ func TestAbsPath(t *testing.T) {
 	})
 
 	t.Run("Relative", func(t *testing.T) {
-		ctxt := copyContext(&build.Default)
+		ctxt := util.CopyContext(&build.Default)
 		want := filepath.Join(wd, "foo")
 		test(t, ctxt, "foo", want)
 
@@ -90,7 +91,7 @@ func TestAbsPath(t *testing.T) {
 	})
 
 	t.Run("Context.Dir", func(t *testing.T) {
-		ctxt := copyContext(&build.Default)
+		ctxt := util.CopyContext(&build.Default)
 		ctxt.Dir = "../"
 		test(t, ctxt, filepath.Base(wd), wd)
 	})
@@ -330,18 +331,10 @@ func writeFile(t testing.TB, name string, data interface{}) {
 	}
 }
 
-func copyContext(orig *build.Context) *build.Context {
-	ctxt := *orig
-	ctxt.BuildTags = append([]string(nil), orig.BuildTags...)
-	ctxt.ToolTags = append([]string(nil), orig.ToolTags...)
-	ctxt.ReleaseTags = append([]string(nil), orig.ReleaseTags...)
-	return &ctxt
-}
-
 func TestScopedContext(t *testing.T) {
 	const pkgName = "github.com/charlievieth/buildutil"
 
-	orig := copyContext(&build.Default)
+	orig := util.CopyContext(&build.Default)
 
 	pkg, err := orig.Import(pkgName, ".", build.FindOnly)
 	if err != nil {
@@ -471,7 +464,7 @@ func TestScopedContext(t *testing.T) {
 
 	// Test GOROOT, GOPATH, and project dir symlinks
 	t.Run("SymlinkAll", func(t *testing.T) {
-		ctxt := copyContext(&build.Default)
+		ctxt := util.CopyContext(&build.Default)
 
 		goroot := filepath.Join(t.TempDir(), filepath.Base(ctxt.GOROOT))
 		if err := os.Symlink(ctxt.GOROOT, goroot); err != nil {
@@ -534,7 +527,7 @@ func TestScopedContext(t *testing.T) {
 
 		writeFile(t, filepath.Join(pkgDir, "v.go"), "package v; const V = 1;")
 
-		ctxt := copyContext(&build.Default)
+		ctxt := util.CopyContext(&build.Default)
 		ctxt, err = ScopedContext(ctxt, pkgDir)
 		if err != nil {
 			t.Fatal(err)
@@ -547,7 +540,7 @@ func TestScopedContext(t *testing.T) {
 	// If build.Context.ReadDir is non-nil we should fall back to it
 	// if we the dir the
 	t.Run("Wrapped", func(t *testing.T) {
-		ctxt = copyContext(ctxt)
+		ctxt = util.CopyContext(ctxt)
 		called := false
 		ctxt.ReadDir = func(dir string) ([]fs.FileInfo, error) {
 			called = true
@@ -572,7 +565,7 @@ func TestScopedContext(t *testing.T) {
 	})
 
 	t.Run("NoPkgDirArgument", func(t *testing.T) {
-		_, err := ScopedContext(copyContext(ctxt))
+		_, err := ScopedContext(util.CopyContext(ctxt))
 		if err == nil {
 			t.Fatal("Expected error when missing pkgdir argument")
 		}
@@ -647,7 +640,7 @@ func TestScopedContext_Parallel(t *testing.T) {
 	}
 	const pkgName = "github.com/charlievieth/buildutil"
 
-	ctxt := copyContext(&build.Default)
+	ctxt := util.CopyContext(&build.Default)
 
 	pkg, err := ctxt.Import(pkgName, ".", build.FindOnly)
 	if err != nil {
@@ -787,7 +780,7 @@ func TestSortUniqueStrings(t *testing.T) {
 }
 
 func TestReadSubdirs(t *testing.T) {
-	ctxt := copyContext(&build.Default)
+	ctxt := util.CopyContext(&build.Default)
 
 	tmp := t.TempDir()
 	for _, r := range "abd" {
@@ -857,7 +850,7 @@ var subdirTests = []SubdirTest{
 
 // Test that our tests cases are valid for the reference implementation.
 func TestHasSubdir_Reference(t *testing.T) {
-	ctxt := copyContext(&build.Default)
+	ctxt := util.CopyContext(&build.Default)
 	ctxt.HasSubdir = nil
 	for i, x := range subdirTests {
 		rel, ok := buildutil.HasSubdir(ctxt, x.Root, x.Dir)
@@ -874,7 +867,7 @@ func TestHasSubdir(t *testing.T) {
 		{Root: "/", Dir: "/", Ok: true}:   true,
 		{Root: "//", Dir: "//", Ok: true}: true,
 	}
-	ctxt := copyContext(&build.Default)
+	ctxt := util.CopyContext(&build.Default)
 	ctxt.HasSubdir = nil
 	for i, x := range subdirTests {
 		rel, ok := HasSubdir(ctxt, x.Root, x.Dir)
@@ -892,7 +885,7 @@ func TestHasSubdir(t *testing.T) {
 
 func TestMinImportDir(t *testing.T) {
 	t.Run("GOROOT", func(t *testing.T) {
-		ctxt := copyContext(&build.Default)
+		ctxt := util.CopyContext(&build.Default)
 		if ctxt.GOROOT == "" || !buildutil.IsDir(ctxt, filepath.Join(ctxt.GOROOT, "src")) {
 			t.Fatal("test requires GOROOT")
 		}
@@ -928,7 +921,7 @@ func TestMinImportDir(t *testing.T) {
 			}
 		}
 
-		ctxt := copyContext(&build.Default)
+		ctxt := util.CopyContext(&build.Default)
 		ctxt.GOPATH = gopath
 
 		pkg, err := minImportDir(ctxt, filepath.Join(gopath, "src/p1/internal/p2"))
@@ -1028,7 +1021,7 @@ func BenchmarkNewScopedContext(b *testing.B) {
 
 func BenchmarkScopedContext(b *testing.B) {
 	pkgdir := initBenchInfo(b)
-	orig := copyContext(&build.Default)
+	orig := util.CopyContext(&build.Default)
 	orig.ReadDir = func(_ string) ([]fs.FileInfo, error) {
 		return nil, nil
 	}
@@ -1103,7 +1096,7 @@ func BenchmarkScopedContext(b *testing.B) {
 func BenchmarkHasSubdirCtxt_Lexical(b *testing.B) {
 	const root = "/Users/cvieth/go/src"
 	const dir = "/Users/cvieth/go/src/github.com/charlievieth/buildutil"
-	ctxt := copyContext(&build.Default)
+	ctxt := util.CopyContext(&build.Default)
 	ctxt.HasSubdir = nil
 	for i := 0; i < b.N; i++ {
 		if _, ok := HasSubdir(ctxt, root, dir); !ok {
@@ -1117,7 +1110,7 @@ func BenchmarkHasSubdirCtxt_NoMatch(b *testing.B) {
 	// const dir = "/Users/cvieth/go/src/github.com/charlievieth/buildutil"
 	const root = "/usr/local/go/src"
 	const dir = "/home/username/go/src/github.com/charlievieth/buildutil"
-	ctxt := copyContext(&build.Default)
+	ctxt := util.CopyContext(&build.Default)
 	ctxt.HasSubdir = nil
 	ctxt.GOROOT = "/usr/local/go"
 	ctxt.GOPATH = "/home/username/go"
@@ -1195,7 +1188,7 @@ func BenchmarkHasSubdir(b *testing.B) {
 			"/usr/local/Cellar/go/1.17.2/libexec/src/fmt",
 			"/usr/local/Cellar/go/1.17.2/libexec/src/go/build",
 		}
-		ctxt := copyContext(&build.Default)
+		ctxt := util.CopyContext(&build.Default)
 		ctxt.HasSubdir = nil
 		for i := 0; i < b.N; i++ {
 			buildutil.HasSubdir(ctxt, root, tests[i%len(tests)])
@@ -1209,7 +1202,7 @@ func BenchmarkHasSubdir(b *testing.B) {
 			"/usr/local/Cellar/go/1.17.2//libexec/src/go/build/",
 			"/usr/local/Cellar/go/1.17.2//libexec/src//go/build",
 		}
-		ctxt := copyContext(&build.Default)
+		ctxt := util.CopyContext(&build.Default)
 		ctxt.HasSubdir = nil
 		for i := 0; i < b.N; i++ {
 			buildutil.HasSubdir(ctxt, root, tests[i%len(tests)])
