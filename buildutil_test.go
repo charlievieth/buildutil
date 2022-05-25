@@ -591,6 +591,71 @@ func TestParseBuildConstraint(t *testing.T) {
 	}
 }
 
+func testMatchFile(t *testing.T, ctxt *build.Context, dir string) {
+	des, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if testing.Short() && len(des) > 64 {
+		des = des[:64]
+	}
+
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("Context: %+v", *ctxt)
+		}
+	})
+	for _, d := range des {
+		name := d.Name()
+		if !d.Type().IsRegular() || !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		if testing.Short() && strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		gotName, gotMatch, err := MatchFile(ctxt, dir, name, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantName, err := ReadPackageName(filepath.Join(dir, name), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantMatch, err := ctxt.MatchFile(dir, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotMatch != wantMatch || (wantMatch && gotName != wantName) {
+			t.Errorf("MatchFile(%q) = %q, %t; want: %q, %t", name,
+				gotName, gotMatch, wantName, wantMatch)
+		}
+	}
+}
+
+func TestMatchFile(t *testing.T) {
+	dir := filepath.Join(runtime.GOROOT(), "src", "runtime")
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		t.Skip("skipping: test requires Go source:", err)
+	}
+
+	t.Run("darwin/arm64", func(t *testing.T) {
+		t.Parallel()
+		ctxt := build.Default
+		ctxt.GOOS = "darwin"
+		ctxt.GOARCH = "arm64"
+		testMatchFile(t, &ctxt, dir)
+	})
+
+	t.Run("linux/amd64", func(t *testing.T) {
+		t.Parallel()
+		ctxt := build.Default
+		ctxt.GOOS = "linux"
+		ctxt.GOARCH = "amd64"
+		ctxt.CgoEnabled = true
+		testMatchFile(t, &ctxt, dir)
+	})
+}
+
 func BenchmarkImportPath(b *testing.B) {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -685,4 +750,23 @@ func BenchmarkShortImport_Overlay(b *testing.B) {
 	}
 
 	benchmarkShortImport(b, &ctxt, list)
+}
+
+func BenchmarkMatchFile(b *testing.B) {
+	dir := b.TempDir()
+	name := filepath.Join(dir, "build.go")
+	// if err := os.WriteFile(name, []byte(LongPackageHeader), 0644); err != nil {
+	const content = "package foo\n"
+	if err := os.WriteFile(name, []byte(content), 0644); err != nil {
+		b.Fatal(err)
+	}
+	ctxt := build.Default
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, err := MatchFile(&ctxt, dir, name, LongPackageHeader)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
 }

@@ -170,7 +170,35 @@ func ReadImports(path string, src interface{}) (pkgname string, imports []string
 	return
 }
 
-func openReader(ctxt *build.Context, filename string, src interface{}) (io.ReadCloser, error) {
+// MatchFile reports whether the file with the given name matches the context
+// and would be included in a Package created by ImportDir. It also returns
+// the package name of the file.
+//
+// MatchFile considers the name of the file and may use ctxt.OpenFile to
+// read some or all of the file's content. If src is not nil it will be
+// used as the content of the file.
+func MatchFile(ctxt *build.Context, dir, name string, src interface{}) (pkgName string, match bool, err error) {
+	rc, err := openReaderDirName(ctxt, dir, name, src)
+	if err != nil {
+		return
+	}
+	data, err := readImportsFast(rc)
+	rc.Close()
+	if err != nil {
+		return "", false, err
+	}
+	pkgName, err = readPackageName(data)
+	if err != nil {
+		return "", false, err
+	}
+	if !GoodOSArchFile(ctxt, name, nil) {
+		return pkgName, false, nil
+	}
+	match, _, err = shouldBuild(ctxt, data, nil)
+	return
+}
+
+func openReaderDirName(ctxt *build.Context, dir, name string, src interface{}) (io.ReadCloser, error) {
 	if src != nil {
 		switch s := src.(type) {
 		case string:
@@ -185,10 +213,18 @@ func openReader(ctxt *build.Context, filename string, src interface{}) (io.ReadC
 			return nil, errors.New("invalid source")
 		}
 	}
-	if ctxt.OpenFile != nil {
-		return ctxt.OpenFile(filename)
+	// If dir is not empty it is joined with name
+	if dir != "" {
+		name = joinPath(ctxt, dir, name)
 	}
-	return os.Open(filename)
+	if ctxt.OpenFile != nil {
+		return ctxt.OpenFile(name)
+	}
+	return os.Open(name)
+}
+
+func openReader(ctxt *build.Context, filename string, src interface{}) (io.ReadCloser, error) {
+	return openReaderDirName(ctxt, "", filename, src)
 }
 
 var (
