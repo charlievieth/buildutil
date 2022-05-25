@@ -144,6 +144,7 @@ func ReadPackageNameTags(path string, src interface{}, tags map[string]bool) (st
 		return "", false, err
 	}
 	data, err := readImportsFast(rc)
+	rc.Close()
 	if err != nil {
 		return "", false, err
 	}
@@ -161,6 +162,7 @@ func ReadImports(path string, src interface{}) (pkgname string, imports []string
 	}
 	imports = make([]string, 0, 8)
 	data, err := readImports(rc, true, &imports)
+	rc.Close()
 	if err != nil {
 		return
 	}
