@@ -169,9 +169,6 @@ func ReadImports(path string, src interface{}) (pkgname string, imports []string
 }
 
 func openReader(ctxt *build.Context, filename string, src interface{}) (io.ReadCloser, error) {
-	if ctxt.OpenFile != nil {
-		return ctxt.OpenFile(filename)
-	}
 	if src != nil {
 		switch s := src.(type) {
 		case string:
@@ -185,6 +182,9 @@ func openReader(ctxt *build.Context, filename string, src interface{}) (io.ReadC
 		default:
 			return nil, errors.New("invalid source")
 		}
+	}
+	if ctxt.OpenFile != nil {
+		return ctxt.OpenFile(filename)
 	}
 	return os.Open(filename)
 }
