@@ -206,7 +206,6 @@ var emptyConstraint Constraint
 // A nil Constraint is safe to use and matches any build.Context.
 type Constraint struct {
 	expr constraint.Expr
-	tags map[string]bool
 }
 
 // NewConstraint returns a new Constraint for the given constraint.Expr and
@@ -215,7 +214,7 @@ func NewConstraint(expr constraint.Expr, tags map[string]bool) *Constraint {
 	if expr == nil && len(tags) == 0 {
 		return &emptyConstraint
 	}
-	return &Constraint{expr: expr, tags: tags}
+	return &Constraint{expr: expr}
 }
 
 // Expr returns the Constraint's constraint.Expr.
@@ -226,25 +225,13 @@ func (c *Constraint) Expr() constraint.Expr {
 	return c.expr
 }
 
-// Tags returns a copy of the Constraint's build tags.
-func (c *Constraint) Tags() map[string]bool {
-	if c == nil || len(c.tags) == 0 {
-		return nil
-	}
-	tags := make(map[string]bool, len(c.tags))
-	for k, v := range c.tags {
-		tags[k] = v
-	}
-	return tags
-}
-
 // Empty returns true if c has no build constraints. An empty Constraint
 // matches all files.
 func (c *Constraint) Empty() bool { return c == nil || c.expr == nil }
 
 // Eval reports whether build.Context ctxt matches the build constraint.
 func (c *Constraint) Eval(ctxt *build.Context) bool {
-	return c.Empty() || eval(ctxt, c.expr, c.tags)
+	return c.Empty() || eval(ctxt, c.expr, nil)
 }
 
 // ParseConstraint parses the build constraints of a Go source file, if any.
@@ -260,19 +247,11 @@ func ParseConstraint(ctxt *build.Context, filename string, src interface{}) (*Co
 	if err != nil {
 		return nil, err
 	}
-	tags := make(map[string]bool)
-	goodOSArchFile(ctxt, filepath.Base(filename), tags)
-	if _, _, err := shouldBuild(ctxt, data, tags); err != nil {
-		return nil, err
-	}
 	expr, err := parseBuildConstraint(data)
 	if err != nil {
 		return nil, err
 	}
-	if len(tags) == 0 {
-		tags = nil
-	}
-	return &Constraint{tags: tags, expr: expr}, nil
+	return &Constraint{expr: expr}, nil
 }
 
 func openReaderDirName(ctxt *build.Context, dir, name string, src interface{}) (io.ReadCloser, error) {
