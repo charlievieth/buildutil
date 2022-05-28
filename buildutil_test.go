@@ -263,6 +263,148 @@ func TestShouldBuild(t *testing.T) {
 	}
 }
 
+func tagsEqual(m1, m2 map[string]bool) bool {
+	if len(m1) != len(m2) {
+		return false
+	}
+	if len(m1) == 0 {
+		return true
+	}
+	for k, v := range m1 {
+		if m2[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func TestParseConstraint(t *testing.T) {
+	for _, tt := range shouldBuildTests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &build.Context{BuildTags: []string{"yes"}}
+			expr, err := ParseConstraint(ctx, "main.go", []byte(tt.content))
+			if err != nil {
+				t.Fatal(err)
+			}
+			shouldBuild := expr.Eval(ctx)
+			if shouldBuild != tt.shouldBuild || !tagsEqual(expr.tags, tt.tags) || err != tt.err {
+				t.Errorf("mismatch:\n"+
+					"have shouldBuild=%v, tags=%v, err=%v\n"+
+					"want shouldBuild=%v, tags=%v, err=%v",
+					shouldBuild, expr.tags, err,
+					tt.shouldBuild, tt.tags, tt.err)
+			}
+		})
+	}
+
+	t.Run("Filename", func(t *testing.T) {
+		ctxt := build.Default
+		ctxt.GOOS = "linux"
+		ctxt.GOARCH = "amd64"
+		want := map[string]bool{
+			"linux": true,
+			"amd64": true,
+		}
+		expr, err := ParseConstraint(&ctxt, "x_linux_amd64.go", []byte("package x\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !tagsEqual(expr.tags, want) {
+			t.Errorf("Tags: got: %v want: %v", expr.tags, want)
+		}
+		if ok := expr.Eval(&ctxt); !ok {
+			t.Errorf("Eval: got: %t want: %t", ok, true)
+		}
+	})
+
+	t.Run("None", func(t *testing.T) {
+		ctxt := build.Default
+		expr, err := ParseConstraint(&ctxt, "main.go", []byte("package main\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if expr.tags != nil {
+			t.Errorf("Tags: got: %v want: %v", expr.tags, nil)
+		}
+		if expr.expr != nil {
+			t.Errorf("Expr: got: %v want: %v", expr.expr, nil)
+		}
+		if !expr.Empty() {
+			t.Errorf("Empty: got: %t want: %t", expr.Empty(), true)
+		}
+	})
+
+	t.Run("Tags", func(t *testing.T) {
+		want := map[string]bool{"a": true, "b": true}
+		expr := NewConstraint(nil, want)
+		if tags := expr.Tags(); !tagsEqual(tags, want) {
+			if expr.tags != nil {
+				t.Errorf("Tags: got: %v want: %v", expr.tags, nil)
+			}
+		}
+		// Make sure we made a copy
+		tags := expr.Tags()
+		tags["aa"] = true
+		if !tagsEqual(expr.tags, want) {
+			t.Errorf("Tags: got: %v want: %v", expr.tags, nil)
+		}
+	})
+
+	t.Run("EmptyTags", func(t *testing.T) {
+		expr := NewConstraint(nil, map[string]bool{})
+		if expr != &emptyConstraint {
+			t.Error("Failed to return emptyConstraint when len(tags) == 0")
+		}
+		if expr.tags != nil {
+			t.Errorf("Tags: got: %v want: %v", expr.tags, nil)
+		}
+	})
+
+	t.Run("NilConstraint", func(t *testing.T) {
+		// Make sure a nil Constraint can be used
+		var expr *Constraint
+		if !expr.Empty() {
+			t.Errorf("Empty: got: %t want: %t", expr.Empty(), true)
+		}
+		if expr.Expr() != nil {
+			t.Errorf("Expr: got: %v want: %v", expr.Expr(), nil)
+		}
+		if expr.Tags() != nil {
+			t.Errorf("Tags: got: %v want: %v", expr.Tags(), nil)
+		}
+		if !expr.Eval(nil) {
+			t.Errorf("Eval: got: %v want: %v", expr.Eval(nil), nil)
+		}
+	})
+
+	t.Run("Allocs", func(t *testing.T) {
+		// Creating a no-op/empty Constraint should not allocate.
+		// Since most Go files have no build constraints and the
+		// Constraint may be cached we should re-use a global
+		// empty Constraint.
+		allocs := testing.AllocsPerRun(10, func() {
+			expr := NewConstraint(nil, nil)
+			if expr == nil {
+				t.Fatal("Nil Constraint")
+			}
+		})
+		if allocs != 0 {
+			t.Errorf("Allocs: got: %f want: %f", allocs, 0.0)
+		}
+
+		empty := make(map[string]bool)
+		allocs = testing.AllocsPerRun(10, func() {
+			expr := NewConstraint(nil, empty)
+			if expr == nil {
+				t.Fatal("Nil Constraint")
+			}
+		})
+		if allocs != 0 {
+			t.Errorf("Allocs: got: %f want: %f", allocs, 0.0)
+		}
+	})
+}
+
 func TestCompatibleOsMap(t *testing.T) {
 	oses := KnownOSList()
 	want := make(map[string][]string)

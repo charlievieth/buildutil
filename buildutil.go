@@ -198,6 +198,83 @@ func MatchFile(ctxt *build.Context, dir, name string, src interface{}) (pkgName 
 	return
 }
 
+var emptyConstraint Constraint
+
+// A Constraint stores the build constraints of a Go source file and can be
+// used to check if a file matches a build.Context.
+//
+// A nil Constraint is safe to use and matches any build.Context.
+type Constraint struct {
+	expr constraint.Expr
+	tags map[string]bool
+}
+
+// NewConstraint returns a new Constraint for the given constraint.Expr and
+// build tags. This is a no-op if both expr and tags are nil.
+func NewConstraint(expr constraint.Expr, tags map[string]bool) *Constraint {
+	if expr == nil && len(tags) == 0 {
+		return &emptyConstraint
+	}
+	return &Constraint{expr: expr, tags: tags}
+}
+
+// Expr returns the Constraint's constraint.Expr.
+func (c *Constraint) Expr() constraint.Expr {
+	if c.Empty() {
+		return nil
+	}
+	return c.expr
+}
+
+// Tags returns a copy of the Constraint's build tags.
+func (c *Constraint) Tags() map[string]bool {
+	if c == nil || len(c.tags) == 0 {
+		return nil
+	}
+	tags := make(map[string]bool, len(c.tags))
+	for k, v := range c.tags {
+		tags[k] = v
+	}
+	return tags
+}
+
+// Empty returns true if c has no build constraints. An empty Constraint
+// matches all files.
+func (c *Constraint) Empty() bool { return c == nil || c.expr == nil }
+
+// Eval reports whether build.Context ctxt matches the build constraint.
+func (c *Constraint) Eval(ctxt *build.Context) bool {
+	return c.Empty() || eval(ctxt, c.expr, c.tags)
+}
+
+// ParseConstraint parses the build constraints of a Go source file, if any.
+// The returned Constraint can be used to check if the file matches a
+// build.Context.
+func ParseConstraint(ctxt *build.Context, filename string, src interface{}) (*Constraint, error) {
+	rc, err := openReader(ctxt, filename, src)
+	if err != nil {
+		return nil, err
+	}
+	data, err := readImportsFast(rc)
+	rc.Close()
+	if err != nil {
+		return nil, err
+	}
+	tags := make(map[string]bool)
+	goodOSArchFile(ctxt, filepath.Base(filename), tags)
+	if _, _, err := shouldBuild(ctxt, data, tags); err != nil {
+		return nil, err
+	}
+	expr, err := parseBuildConstraint(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(tags) == 0 {
+		tags = nil
+	}
+	return &Constraint{tags: tags, expr: expr}, nil
+}
+
 func openReaderDirName(ctxt *build.Context, dir, name string, src interface{}) (io.ReadCloser, error) {
 	if src != nil {
 		switch s := src.(type) {
