@@ -858,3 +858,28 @@ func BenchmarkMatchFile(b *testing.B) {
 		}
 	}
 }
+
+func TestParseFileHeader(t *testing.T) {
+	const source = `// Copyright 2011 The Go Authors.  All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+` + "//go:build !go1.5" + `
+
+/*
+  For all Go versions other than 1.5 use the Import and ImportDir functions
+  declared in go/build.
+*/
+
+package buildutil
+
+import "go/build"`
+
+	trimmed, goBuild, sawBinaryOnly, err := parseFileHeader([]byte(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("trimmed:", "\n"+string(trimmed))
+	t.Log("goBuild:", "\n"+string(goBuild))
+	t.Log("sawBinaryOnly:", sawBinaryOnly)
+}

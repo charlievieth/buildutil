@@ -19,6 +19,23 @@ import (
 	"strings"
 )
 
+// TODO: change funcs to take Source as their argument
+//
+// Source represents or provides access to Go source code and if not nil
+// must be one of the following types:
+//
+//   string
+//   []byte
+//   *bytes.Buffer
+//   *bytes.Reader
+//   *strings.Reader
+//   io.ReadCloser
+//   io.Reader
+//
+// If Source is an io.ReadCloser it will be closed by the function it is
+// passed to.
+// type Source interface{}
+
 // BuildTags adds and build tags found in name or content to allTags.
 func BuildTags(name string, content []byte, allTags map[string]bool) {
 	ctxt := build.Default
@@ -65,7 +82,7 @@ func Include(ctxt *build.Context, path string) bool {
 	if err != nil {
 		return false
 	}
-	data, err := readImportsFast(f)
+	data, err := readPackageClause(f)
 	f.Close()
 	if err != nil {
 		return false
@@ -87,7 +104,7 @@ func IncludeTags(ctxt *build.Context, path string, tags map[string]bool) (bool, 
 	if err != nil {
 		return false, err
 	}
-	data, err := readImportsFast(f)
+	data, err := readPackageClause(f)
 	f.Close()
 	if err != nil {
 		return false, err
@@ -110,7 +127,7 @@ func ShortImport(ctxt *build.Context, path string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	data, err := readImportsFast(f)
+	data, err := readPackageClause(f)
 	f.Close()
 	if err != nil {
 		return "", false
@@ -123,28 +140,20 @@ func ShortImport(ctxt *build.Context, path string) (string, bool) {
 }
 
 func ReadPackageName(path string, src interface{}) (string, error) {
-	rc, err := openReader(&build.Default, path, src)
-	if err != nil {
-		return "", err
-	}
-	data, err := readImportsFast(rc)
-	rc.Close()
+	data, err := readPackageClauseFromSrc(&build.Default, "", path, src)
 	if err != nil {
 		return "", err
 	}
 	return readPackageName(data)
 }
 
+// WARN: I don't think anything uses this
+//
 // ReadPackageNameTags evaluates the Go source file at path and returns
 // the package name, if it can be used with build.Context ctxt, populates
 // any build tags (if tags is not nil), and any error that occured.
 func ReadPackageNameTags(path string, src interface{}, tags map[string]bool) (string, bool, error) {
-	rc, err := openReader(&build.Default, path, src)
-	if err != nil {
-		return "", false, err
-	}
-	data, err := readImportsFast(rc)
-	rc.Close()
+	data, err := readPackageClauseFromSrc(&build.Default, "", path, src)
 	if err != nil {
 		return "", false, err
 	}
@@ -155,6 +164,7 @@ func ReadPackageNameTags(path string, src interface{}, tags map[string]bool) (st
 	return name, shouldBuildOnly(&build.Default, data, tags), nil
 }
 
+// WARN: I don't think anything uses this
 func ReadImports(path string, src interface{}) (pkgname string, imports []string, err error) {
 	rc, err := openReader(&build.Default, path, src)
 	if err != nil {
@@ -170,6 +180,16 @@ func ReadImports(path string, src interface{}) (pkgname string, imports []string
 	return
 }
 
+// ReadPackageClause is like os.ReadAll, except that it expects a Go file as input
+// and stops reading the input once the package clause has been read.
+//
+// If src != nil, ReadPackageClause parses the package clause from from src.
+func ReadPackageClause(ctxt *build.Context, filename string, src interface{}) ([]byte, error) {
+	// WARN: if src is not a reaader we return it unmodified without checking
+	// if its a valid Go source file.
+	return readPackageClauseFromSrc(ctxt, "", filename, src)
+}
+
 // MatchFile reports whether the file with the given name matches the context
 // and would be included in a Package created by ImportDir. It also returns
 // the package name of the file.
@@ -178,12 +198,7 @@ func ReadImports(path string, src interface{}) (pkgname string, imports []string
 // read some or all of the file's content. If src is not nil it will be
 // used as the content of the file.
 func MatchFile(ctxt *build.Context, dir, name string, src interface{}) (pkgName string, match bool, err error) {
-	rc, err := openReaderDirName(ctxt, dir, name, src)
-	if err != nil {
-		return
-	}
-	data, err := readImportsFast(rc)
-	rc.Close()
+	data, err := readPackageClauseFromSrc(ctxt, dir, name, src)
 	if err != nil {
 		return "", false, err
 	}
@@ -238,12 +253,7 @@ func (c *Constraint) Eval(ctxt *build.Context) bool {
 // The returned Constraint can be used to check if the file matches a
 // build.Context.
 func ParseConstraint(ctxt *build.Context, filename string, src interface{}) (*Constraint, error) {
-	rc, err := openReader(ctxt, filename, src)
-	if err != nil {
-		return nil, err
-	}
-	data, err := readImportsFast(rc)
-	rc.Close()
+	data, err := readPackageClauseFromSrc(ctxt, "", filename, src)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +262,43 @@ func ParseConstraint(ctxt *build.Context, filename string, src interface{}) (*Co
 		return nil, err
 	}
 	return &Constraint{expr: expr}, nil
+}
+
+func readPackageClauseFromSrc(ctxt *build.Context, dir, name string, src interface{}) ([]byte, error) {
+	// If src is not a reader we can assume it contains the complete
+	// Go source.
+	if src != nil {
+		switch s := src.(type) {
+		case string:
+			return []byte(s), nil
+		case []byte:
+			return s, nil
+		case *bytes.Buffer:
+			return s.Bytes(), nil
+		case *bytes.Reader:
+			buf := make([]byte, s.Len())
+			n, _ := s.Read(buf)
+			if 0 <= n && n <= len(buf) {
+				buf = buf[:n]
+			}
+			return buf, nil
+		case *strings.Reader:
+			buf := make([]byte, s.Len())
+			n, _ := s.Read(buf)
+			if 0 <= n && n <= len(buf) {
+				buf = buf[:n]
+			}
+			return buf, nil
+		}
+	}
+	// Read package clause from file.
+	rc, err := openReaderDirName(ctxt, dir, name, src)
+	if err != nil {
+		return nil, err
+	}
+	data, err := readPackageClause(rc)
+	rc.Close()
+	return data, err
 }
 
 func openReaderDirName(ctxt *build.Context, dir, name string, src interface{}) (io.ReadCloser, error) {
@@ -273,7 +320,7 @@ func openReaderDirName(ctxt *build.Context, dir, name string, src interface{}) (
 	if dir != "" {
 		name = joinPath(ctxt, dir, name)
 	}
-	if ctxt.OpenFile != nil {
+	if ctxt != nil && ctxt.OpenFile != nil {
 		return ctxt.OpenFile(name)
 	}
 	return os.Open(name)
@@ -623,10 +670,10 @@ Found:
 
 // joinPath calls ctxt.JoinPath (if not nil) or else filepath.Join.
 func joinPath(ctxt *build.Context, elem ...string) string {
-	if f := ctxt.JoinPath; f != nil {
-		return f(elem...)
+	if ctxt == nil || ctxt.JoinPath == nil {
+		return filepath.Join(elem...)
 	}
-	return filepath.Join(elem...)
+	return ctxt.JoinPath(elem...)
 }
 
 // splitPathList calls ctxt.SplitPathList (if not nil) or else filepath.SplitList.

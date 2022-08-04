@@ -15,6 +15,29 @@ func DuplicateStrings(a []string) []string {
 	return s
 }
 
+// func DuplicateStringsInPlace(strs ...*[]string) {
+// 	if len(strs) == 0 {
+// 		return
+// 	}
+// 	n := 0
+// 	for _, a := range strs {
+// 		n += len(*a)
+// 	}
+// 	all := make([]string, n)
+// 	n = 0
+// 	for i, a := range strs {
+// 		n := len(*a)
+// 		if n == 0 {
+// 			*a = nil
+// 			continue
+// 		}
+// 		dupe := all[0:n:n]
+// 		copy(dupe, *a)
+// 		*strs[i] = dupe
+// 		all = all[n:]
+// 	}
+// }
+
 func StringsContains(a []string, val string) bool {
 	for _, s := range a {
 		if s == val {
@@ -160,3 +183,20 @@ func CopyContext(orig *build.Context) *build.Context {
 
 	return ctxt
 }
+
+// type stringSlice struct {
+// 	a []string
+// }
+
+// func (s *stringSlice) Len() int           { return len(s.a) }
+// func (s *stringSlice) Less(i, j int) bool { return s.a[i] < s.a[j] }
+// func (s *stringSlice) Swap(i, j int)      { s.a[i], s.a[j] = s.a[j], s.a[i] }
+
+// func isSorted(a []string) bool {
+// 	for i := 0; i < len(a)-1; i++ {
+// 		if a[i] > a[i+1] {
+// 			return false
+// 		}
+// 	}
+// 	return true
+// }

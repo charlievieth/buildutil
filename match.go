@@ -276,7 +276,7 @@ func MatchContext(orig *build.Context, filename string, src interface{}) (*build
 	if err != nil {
 		return nil, err
 	}
-	data, err := readImportsFast(rc)
+	data, err := readPackageClause(rc)
 	rc.Close()
 	if err != nil {
 		return nil, err

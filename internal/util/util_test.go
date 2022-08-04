@@ -45,6 +45,56 @@ func TestRemoveAllTests(t *testing.T) {
 	}
 }
 
+// func TestDuplicateStringsInPlace(t *testing.T) {
+// 	tests := [][][]string{
+// 		nil,
+// 		{nil, nil},
+// 		{{"a"}, {}},
+// 		{{"a"}, nil},
+// 		{{"a"}, {"b"}, {"c"}},
+// 		{{"a", "a", "a"}, {"b", "b", "b"}, {"c", "c", "c"}},
+// 	}
+// 	for _, strs := range tests {
+// 		orig := append([][]string(nil), strs...)
+// 		var want [][]string
+// 		var in []*[]string
+// 		for i, a := range strs {
+// 			want = append(want, append([]string(nil), a...))
+// 			in = append(in, &strs[i])
+// 		}
+// 		DuplicateStringsInPlace(in...)
+// 		var got [][]string
+// 		for _, a := range in {
+// 			if a != nil {
+// 				got = append(got, *a)
+// 			} else {
+// 				got = append(got, nil)
+// 			}
+// 		}
+// 		if !reflect.DeepEqual(got, want) {
+// 			t.Errorf("DuplicateStringsInPlace(%q) = %q; want: %q", strs, got, want)
+// 		}
+//
+// 		// Test that we made a copy by changing the original
+// 		for i := range orig {
+// 			for j := range orig[i] {
+// 				orig[i][j] = strings.ToUpper(orig[i][j])
+// 			}
+// 		}
+// 		if !reflect.DeepEqual(got, want) {
+// 			t.Errorf("DuplicateStringsInPlace(%q) = %q; want: %q", strs, got, want)
+// 		}
+//
+// 		// Make sure cap == len so that append() does not overwrite
+// 		// the next []string
+// 		for i, a := range got {
+// 			if cap(a) != len(a) {
+// 				t.Errorf("%d: %q: cap(%q) = %d; want: %d", i, got, a, cap(a), len(a))
+// 			}
+// 		}
+// 	}
+// }
+
 type sameStringsTest struct {
 	a1, a2 []string
 	want   bool

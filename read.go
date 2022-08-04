@@ -253,11 +253,9 @@ type fileInfo struct {
 	header []byte
 }
 
-// TODO: rename to "readPackageName" or something
-//
-// readImportsFast is like readImports, except that it stops reading after the
+// readPackageClause is like readImports, except that it stops reading after the
 // package clause.
-func readImportsFast(f io.Reader) ([]byte, error) {
+func readPackageClause(f io.Reader) ([]byte, error) {
 	r := newImportReader("dummy.go", f)
 	defer putImportReader(r)
 	r.readKeyword("package")
