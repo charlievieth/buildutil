@@ -549,6 +549,19 @@ var goodOSArchFileTests = []goodOSArchFileTest{
 		tags:     []string{"darwin", "arm64"},
 		match:    false,
 	},
+	// TODO: for now the "unix" build constraint is not applied to file names
+	{
+		GOOS:     "darwin",
+		GOARCH:   "arm64",
+		filename: "syscall_unix.go",
+		match:    true,
+	},
+	{
+		GOOS:     "windows",
+		GOARCH:   "amd64",
+		filename: "syscall_unix.go",
+		match:    true,
+	},
 }
 
 func init() {

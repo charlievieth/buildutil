@@ -22,8 +22,7 @@ import (
 //
 // An exception: if GOOS=android, then files with GOOS=linux are also matched.
 func goodOSArchFile(ctxt *build.Context, name string, allTags map[string]bool) bool {
-	// TODO: check if name contains path elements?
-	name, _, _ = cut(name, ".")
+	name, _, _ = strings.Cut(name, ".")
 
 	// Before Go 1.4, a file called "linux.go" would be equivalent to having a
 	// build tag "linux" in that file. For Go 1.4 and beyond, we require this
