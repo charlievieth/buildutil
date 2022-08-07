@@ -546,11 +546,13 @@ func matchTag(ctxt *build.Context, name string, allTags map[string]bool) bool {
 	if ctxt.GOOS == "ios" && name == "darwin" {
 		return true
 	}
-	if name == "unix" && unixOS[ctxt.GOOS] {
-		return true
-	}
-	if name == "boringcrypto" {
-		name = "goexperiment.boringcrypto" // boringcrypto is an old name for goexperiment.boringcrypto
+	if matchUnixAndBoringCrypto {
+		if name == "unix" && unixOS[ctxt.GOOS] {
+			return true
+		}
+		if name == "boringcrypto" {
+			name = "goexperiment.boringcrypto" // boringcrypto is an old name for goexperiment.boringcrypto
+		}
 	}
 
 	// other tags
