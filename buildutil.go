@@ -15,7 +15,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -547,6 +546,12 @@ func matchTag(ctxt *build.Context, name string, allTags map[string]bool) bool {
 	if ctxt.GOOS == "ios" && name == "darwin" {
 		return true
 	}
+	if name == "unix" && unixOS[ctxt.GOOS] {
+		return true
+	}
+	if name == "boringcrypto" {
+		name = "goexperiment.boringcrypto" // boringcrypto is an old name for goexperiment.boringcrypto
+	}
 
 	// other tags
 	for _, tag := range ctxt.BuildTags {
@@ -734,25 +739,10 @@ func KnownArchList() []string {
 	return s
 }
 
-func parseFields(fields string) (map[string]bool, []string) {
-	a := strings.Fields(fields)
-	sort.Strings(a)
-
-	m := make(map[string]bool, len(a))
-	for _, s := range a {
-		m[s] = true
+var knownReleaseTag = func() map[string]bool {
+	m := make(map[string]bool, len(build.Default.ReleaseTags))
+	for _, v := range build.Default.ReleaseTags {
+		m[v] = true
 	}
-	return m, a
-}
-
-var (
-	knownOS, knownOSList     = parseFields(goosList)
-	knownArch, knownArchList = parseFields(goarchList)
-	knownReleaseTag          = func() map[string]bool {
-		m := make(map[string]bool, len(build.Default.ReleaseTags))
-		for _, v := range build.Default.ReleaseTags {
-			m[v] = true
-		}
-		return m
-	}()
-)
+	return m
+}()
