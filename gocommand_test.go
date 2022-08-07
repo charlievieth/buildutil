@@ -134,7 +134,7 @@ func TestGoCommandAll(t *testing.T) {
 		t.Skip("skipping: short test")
 	}
 
-	dir := createCommandTestFiles(t)
+	dir, gopath := createCommandTestFiles(t)
 
 	names, err := filepath.Glob(dir + "/*.go")
 	if err != nil {
@@ -147,6 +147,7 @@ func TestGoCommandAll(t *testing.T) {
 			t.Parallel()
 
 			orig := build.Default
+			orig.GOPATH = gopath
 			ctxt, err := MatchContext(&orig, name, nil)
 			if err != nil {
 				t.Fatal(err)
@@ -154,6 +155,7 @@ func TestGoCommandAll(t *testing.T) {
 
 			cmd := GoCommand(ctxt, "go", "list", "-json")
 			cmd.Dir = dir
+			cmd.Env = append([]string{"GO111MODULE=auto"}, os.Environ()...)
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Errorf("%s: %s\n\t%s\n", filepath.Base(name), err,
 					bytes.TrimSpace(out))
@@ -162,7 +164,7 @@ func TestGoCommandAll(t *testing.T) {
 	}
 }
 
-func createCommandTestFiles(t *testing.T) string {
+func createCommandTestFiles(t *testing.T) (dir, gopath string) {
 	tempdir := t.TempDir()
 	dirname := filepath.Join(tempdir, "go", "src", "pkg1")
 	if err := os.MkdirAll(dirname, 0755); err != nil {
@@ -224,7 +226,7 @@ func createCommandTestFiles(t *testing.T) string {
 			p.GOOS, p.GOARCH, packageName)
 		writeFile(name, src)
 	}
-	return dirname
+	return dirname, filepath.Join(tempdir, "go")
 }
 
 func TestEnvMap(t *testing.T) {
