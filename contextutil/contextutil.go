@@ -41,7 +41,6 @@ var errNotAbsolute = errors.New("path is not absolute")
 //		ctxt.GOPATH+"/src/github.com/charlievieth/buildutil/contextutil",
 //		"go.mod",
 //	)
-//
 func ContainingDirectory(ctxt *build.Context, child, stopAt string, tombstones ...string) (string, error) {
 	if len(tombstones) == 0 {
 		return "", errors.New("contextutil: no tombstone files specified")
@@ -447,14 +446,13 @@ func readDir(ctxt *build.Context, path string) ([]fs.FileInfo, error) {
 // entire GOPATH (e.g. "golang.org/x/tools/refactor/rename"), which can greatly
 // speed up processing time.
 //
-// 	// In the below example we limit the search path to "/go/src/pkg/buildutil".
-// 	ctxt, _ := ScopedContext(&build.Default, "/go/src/pkg/buildutil")
-// 	ctxt.ReadDir("/go")                               // => ["src"]
-// 	ctxt.ReadDir("/go/src")                           // => ["pkg"]
-// 	ctxt.ReadDir("/go/src/pkg")                       // => ["buildutil"]
-// 	ctxt.ReadDir("/go/src/pkg/buildutil")             // => [ALL ENTRIES]
-// 	ctxt.ReadDir("/go/src/pkg/buildutil/contextutil") // => [ALL ENTRIES]
-//
+//	// In the below example we limit the search path to "/go/src/pkg/buildutil".
+//	ctxt, _ := ScopedContext(&build.Default, "/go/src/pkg/buildutil")
+//	ctxt.ReadDir("/go")                               // => ["src"]
+//	ctxt.ReadDir("/go/src")                           // => ["pkg"]
+//	ctxt.ReadDir("/go/src/pkg")                       // => ["buildutil"]
+//	ctxt.ReadDir("/go/src/pkg/buildutil")             // => [ALL ENTRIES]
+//	ctxt.ReadDir("/go/src/pkg/buildutil/contextutil") // => [ALL ENTRIES]
 func ScopedContext(orig *build.Context, pkgdirs ...string) (*build.Context, error) {
 	// TODO: allow no pkgdirs to limit Context to GOROOT?
 	if len(pkgdirs) == 0 {
