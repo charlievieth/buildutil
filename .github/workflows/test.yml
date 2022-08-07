@@ -33,23 +33,14 @@ jobs:
         key: ${{ runner.os }}-1.${{ matrix.go }}.x-${{ hashFiles('**/go.sum') }}
         restore-keys: ${{ runner.os }}-1.${{ matrix.go }}.x-
 
-    - name: Install dependencies
-      run: |
-        export GOBIN=$HOME/go/bin
-        case "${{ matrix.go }}" in
-          17|18) _version='@latest';;
-          *) _version='';;
-        esac
-        go install github.com/kyoh86/richgo"${_version}"
-
     - name: Test
-      run: RICHGO_FORCE_COLOR=1 PATH=$HOME/go/bin/:$PATH richgo test -v ./...
+      run: make test
 
     - name: Test Race
-      run: RICHGO_FORCE_COLOR=1 PATH=$HOME/go/bin/:$PATH richgo test -v -race ./...
+      run: make test_race
 
-    # - name: Test GoCommandAll
-    #   run: RICHGO_FORCE_COLOR=1 PATH=$HOME/go/bin/:$PATH richgo test -run TestGoCommandAll -gocommand-all
+    - name: Test GoCommand
+      run: make test_gocommand_all
 
   test-win:
     strategy:
