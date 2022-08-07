@@ -3,107 +3,11 @@ package buildutil
 import (
 	"context"
 	"go/build"
-	"os"
 	"os/exec"
-	"sort"
 	"strings"
 
 	"github.com/charlievieth/buildutil/internal/util"
 )
-
-type env []string
-
-func (e env) Value() []string { return []string(e) }
-
-func (e env) Index(key string) int {
-	for i, s := range e {
-		if len(s) > len(key) && s[0:len(key)] == key && s[len(key)] == '=' {
-			return i
-		}
-	}
-	return -1
-}
-
-func (e env) Lookup(key string) (value string, found bool) {
-	if i := e.Index(key); i != -1 {
-		_, value, _ = cut(e[i], "=")
-		return value, true
-	}
-	return "", false
-}
-
-func (e env) Set(key, value string) env {
-	if i := e.Index(key); i != -1 {
-		e[i] = key + "=" + value
-	} else {
-		e = append(e, key+"="+value)
-	}
-	return e
-}
-
-type environ struct {
-	env []string
-}
-
-func newEnviron() *environ {
-	env := os.Environ()
-	sort.Strings(env)
-	return &environ{env: env}
-}
-
-func (e *environ) Value() []string {
-	return e.env
-}
-
-/*
-	func Search(n int, f func(int) bool) int {
-		// Define f(-1) == false and f(n) == true.
-		// Invariant: f(i-1) == false, f(j) == true.
-		i, j := 0, n
-		for i < j {
-			h := int(uint(i+j) >> 1) // avoid overflow when computing h
-			// i ≤ h < j
-			if !f(h) {
-				i = h + 1 // preserves f(i-1) == false
-			} else {
-				j = h // preserves f(j) == true
-			}
-		}
-		// i == j, f(i-1) == false, and f(j) (= f(i)) == true  =>  answer is i.
-		return i
-	}
-*/
-func (e *environ) Index(key string) int {
-	i, j := 0, len(e.env)
-	for i < j {
-		h := int(uint(i+j) >> 1)
-		if !(e.env[h] >= key) {
-			i = h + 1
-		} else {
-			j = h // preserves f(j) == true
-		}
-	}
-	if i < len(e.env) && e.env[i] == key {
-		return i
-	}
-	return -1
-}
-
-func (e *environ) Lookup(key string) (value string, found bool) {
-	if i := e.Index(key); i != -1 {
-		_, value, _ = cut(e.env[i], "=")
-		return value, true
-	}
-	return "", false
-}
-
-func (e *environ) Set(key, value string) {
-	if i := e.Index(key); i != -1 {
-		e.env[i] = key + "=" + value
-	} else {
-		e.env = append(e.env, key+"="+value)
-	}
-}
 
 // GoCommandContext returns an exec.Cmd for the provided build.Context and
 // context.Context.  The Cmd's env is set to that of the Context. The args
