@@ -164,34 +164,47 @@ func FindProjectRoot(ctxt *build.Context, path string, extra ...string) (string,
 	return ContainingDirectory(ctxt, path, root, tombstones...)
 }
 
+// HasSubdirFunc returns a function that can be used for build.Context.HasSubdir
+// field and is significantly faster than the default implementation.
+func HasSubdirFunc(ctxt *build.Context) func(root, dir string) (rel string, ok bool) {
+	return func(root, dir string) (string, bool) {
+		return hasSubdirImpl(ctxt, root, dir)
+	}
+}
+
 // HasSubdir calls ctxt.HasSubdir (if not nil) or else uses the local file
-// system to answer the question.
+// system to answer the question. It is significantly faster than the default
+// build.Context.hasSubdir() method as it tries to avoid calls to
+// filepath.EvalSymlinks.
 func HasSubdir(ctxt *build.Context, root, dir string) (rel string, ok bool) {
 	if f := ctxt.HasSubdir; f != nil {
 		return f(root, dir)
 	}
+	return hasSubdirImpl(ctxt, root, dir)
+}
 
-	// Clean paths and check again.
+// hasSubdirImpl implements HasSubir and can be used as the HasSubdir field
+// of a build.Context.
+func hasSubdirImpl(ctxt *build.Context, root, dir string) (rel string, ok bool) {
+	// clean paths and check lexically
 	root = filepath.Clean(root)
 	dir = filepath.Clean(dir)
 	if rel, ok = hasSubdir(root, dir); ok {
 		return
 	}
 
-	// Check if we're comparing a path that is in the GOROOT and one in
-	// the GOPATH. Paths like this are very unlikely to match after
-	// expanding symlinks, which is an expensive operation.
+	// If either root or dir is GOROOT, or a child of it, and the other is
+	// a child of GOPATH we can assume the two do not overlap and skip the
+	// expensive call to filepath.EvalSymlinks.
 	goroot := filepath.Clean(ctxt.GOROOT)
 	if (root == goroot || isSubdir(goroot, root)) && inGopath(ctxt, dir) ||
 		(dir == goroot || isSubdir(goroot, dir)) && inGopath(ctxt, root) {
 		return "", false
 	}
 
-	// TODO: improve comment
-	//
-	// It is unlikely that dir is a subdirectory of root, so optimize
-	// for that case using os.Stat and os.SameFile, before attempting
-	// the much more expensive call to filepath.EvalSymlinks.
+	// Use os.SameFile to determine if dir is a child of root or contains
+	// a symlink before attempting to use filepath.EvalSymlinks, which will
+	// stat each element of both root and dir.
 	rootInfo, err := os.Stat(root)
 	if err != nil {
 		return "", false
@@ -232,7 +245,8 @@ func HasSubdir(ctxt *build.Context, root, dir string) (rel string, ok bool) {
 // isSubdir reports if dir is within root by performing lexical analysis only.
 func isSubdir(root, dir string) bool {
 	n := len(root)
-	return 0 < n && n < len(dir) && dir[0:n] == root && os.IsPathSeparator(dir[n])
+	return 0 < n && n < len(dir) && dir[0:n] == root &&
+		n < len(dir) /* BCE */ && os.IsPathSeparator(dir[n])
 }
 
 // hasSubdir reports if dir is within root by performing lexical analysis only.

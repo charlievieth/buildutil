@@ -861,16 +861,17 @@ func TestHasSubdir_Reference(t *testing.T) {
 	}
 }
 
-func TestHasSubdir(t *testing.T) {
+func testHasSubdir(t *testing.T, ctxt *build.Context,
+	fn func(*build.Context, string, string) (string, bool)) {
+
 	// TODO: I think there is a bug in the reference implementation
 	ignore := map[SubdirTest]bool{
 		{Root: "/", Dir: "/", Ok: true}:   true,
 		{Root: "//", Dir: "//", Ok: true}: true,
 	}
-	ctxt := util.CopyContext(&build.Default)
-	ctxt.HasSubdir = nil
+
 	for i, x := range subdirTests {
-		rel, ok := HasSubdir(ctxt, x.Root, x.Dir)
+		rel, ok := fn(ctxt, x.Root, x.Dir)
 		if rel != x.Rel || ok != x.Ok {
 			if ignore[x] {
 				t.Logf("%d: %+v: rel: %q want: %q ok: %t want: %t",
@@ -879,6 +880,57 @@ func TestHasSubdir(t *testing.T) {
 			}
 			t.Errorf("%d: %+v: rel: %q want: %q ok: %t want: %t",
 				i, x, rel, x.Rel, ok, x.Ok)
+		}
+	}
+}
+
+func TestHasSubdir(t *testing.T) {
+	ctxt := util.CopyContext(&build.Default)
+	ctxt.HasSubdir = nil
+	testHasSubdir(t, ctxt, HasSubdir)
+}
+
+func TestHasSubdirFunc(t *testing.T) {
+	ctxt := util.CopyContext(&build.Default)
+	ctxt.HasSubdir = HasSubdirFunc(ctxt)
+	testHasSubdir(t, ctxt, buildutil.HasSubdir)
+}
+
+// Make sure this is safe to use in parallel.
+func TestHasSubdirParallel(t *testing.T) {
+	ctxt := util.CopyContext(&build.Default)
+	ctxt.HasSubdir = nil
+
+	var dirs []string
+	for name := range stdLibPkgs {
+		dirs = append(dirs, filepath.Join(ctxt.GOROOT, "src", name))
+		if len(dirs) >= 8 {
+			break
+		}
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirs = append(dirs, wd)
+	dirs = append(dirs, ctxt.SrcDirs()...)
+
+	roots := ctxt.SrcDirs()
+
+	for i, root := range roots {
+		for _, dir := range dirs {
+			i := i
+			root := root
+			dir := dir
+			t.Run(fmt.Sprintf("%d/%s", i, filepath.Base(dir)), func(t *testing.T) {
+				t.Parallel()
+				rel1, ok1 := HasSubdir(ctxt, root, dir)
+				rel2, ok2 := buildutil.HasSubdir(ctxt, root, dir)
+				if rel1 != rel2 || ok1 != ok2 {
+					t.Errorf("HasSubdir(%q, %q) = %q, %t; want: %q, %t",
+						root, dir, rel1, ok1, rel2, ok2)
+				}
+			})
 		}
 	}
 }
@@ -1093,32 +1145,57 @@ func BenchmarkScopedContext(b *testing.B) {
 	})
 }
 
-func BenchmarkHasSubdirCtxt_Lexical(b *testing.B) {
-	const root = "/Users/cvieth/go/src"
-	const dir = "/Users/cvieth/go/src/github.com/charlievieth/buildutil"
-	ctxt := util.CopyContext(&build.Default)
-	ctxt.HasSubdir = nil
-	for i := 0; i < b.N; i++ {
-		if _, ok := HasSubdir(ctxt, root, dir); !ok {
-			b.Fatal("wat")
-		}
+func BenchmarkContextHasSubdir(b *testing.B) {
+	tmpdir, err := filepath.EvalSymlinks(b.TempDir())
+	if err != nil {
+		b.Fatal(err)
 	}
-}
+	dir := filepath.Join(tmpdir, "src/p1/p2")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		b.Fatal(err)
+	}
 
-func BenchmarkHasSubdirCtxt_NoMatch(b *testing.B) {
-	// const root = "/usr/local/Cellar/go/1.17.2/libexec/src"
-	// const dir = "/Users/cvieth/go/src/github.com/charlievieth/buildutil"
-	const root = "/usr/local/go/src"
-	const dir = "/home/username/go/src/github.com/charlievieth/buildutil"
 	ctxt := util.CopyContext(&build.Default)
 	ctxt.HasSubdir = nil
-	ctxt.GOROOT = "/usr/local/go"
-	ctxt.GOPATH = "/home/username/go"
-	for i := 0; i < b.N; i++ {
-		if _, ok := HasSubdir(ctxt, root, dir); ok {
-			b.Fatal("wat")
+	ctxt.GOPATH = tmpdir
+	ctxt.GOROOT = runtime.GOROOT()
+	b.ResetTimer()
+
+	b.Run("Match", func(b *testing.B) {
+		gopath := ctxt.GOPATH
+		for i := 0; i < b.N; i++ {
+			if _, ok := HasSubdir(ctxt, gopath, dir); !ok {
+				b.Fatal("failed to lexically match subdir")
+			}
 		}
-	}
+	})
+
+	b.Run("NoMatch", func(b *testing.B) {
+		goroot := ctxt.GOROOT
+		for i := 0; i < b.N; i++ {
+			if _, ok := HasSubdir(ctxt, goroot, dir); ok {
+				b.Fatal("lexically match invalid subdir")
+			}
+		}
+	})
+
+	b.Run("Match/Reference", func(b *testing.B) {
+		gopath := ctxt.GOPATH
+		for i := 0; i < b.N; i++ {
+			if _, ok := buildutil.HasSubdir(ctxt, gopath, dir); !ok {
+				b.Fatal("failed to lexically match subdir")
+			}
+		}
+	})
+
+	b.Run("NoMatch/Reference", func(b *testing.B) {
+		goroot := ctxt.GOROOT
+		for i := 0; i < b.N; i++ {
+			if _, ok := buildutil.HasSubdir(ctxt, goroot, dir); ok {
+				b.Fatal("lexically match invalid subdir")
+			}
+		}
+	})
 }
 
 func BenchmarkIsSubdir(b *testing.B) {
@@ -1146,6 +1223,7 @@ func BenchmarkInGopath(b *testing.B) {
 	})
 }
 
+// WARN: fix these benchmarks to use HasSubdir
 func BenchmarkHasSubdir(b *testing.B) {
 	// const root = "/usr/local/Cellar/go/1.17.2/libexec"
 	// var tests = [...]string{
@@ -1155,11 +1233,16 @@ func BenchmarkHasSubdir(b *testing.B) {
 	// for i := 0; i < b.N; i++ {
 	// 	hasSubdir(root, tests[i%len(tests)])
 	// }
+	wd, err := os.Getwd()
+	if err != nil {
+		b.Fatal(err)
+	}
 	b.Run("Clean", func(b *testing.B) {
 		const root = "/usr/local/Cellar/go/1.17.2/libexec"
 		var tests = [...]string{
 			"/usr/local/Cellar/go/1.17.2/libexec/src/fmt",
-			"/usr/local/Cellar/go/1.17.2/libexec/src/go/build",
+			wd,
+			// "/usr/local/Cellar/go/1.17.2/libexec/src/go/build",
 		}
 		for i := 0; i < b.N; i++ {
 			hasSubdir(root, tests[i%len(tests)])
@@ -1186,7 +1269,8 @@ func BenchmarkHasSubdir(b *testing.B) {
 		const root = "/usr/local/Cellar/go/1.17.2/libexec"
 		var tests = [...]string{
 			"/usr/local/Cellar/go/1.17.2/libexec/src/fmt",
-			"/usr/local/Cellar/go/1.17.2/libexec/src/go/build",
+			wd,
+			// "/usr/local/Cellar/go/1.17.2/libexec/src/go/build",
 		}
 		ctxt := util.CopyContext(&build.Default)
 		ctxt.HasSubdir = nil
