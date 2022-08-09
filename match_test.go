@@ -312,6 +312,35 @@ func BenchmarkMatchContext(b *testing.B) {
 	}
 }
 
+func BenchmarkMatchContext_ArchOS(b *testing.B) {
+	goos := "linux"
+	goarch := "amd64"
+	if runtime.GOOS == "linux" {
+		goos = "darwin"
+	}
+	if runtime.GOARCH == "amd64" {
+		goarch = "arm64"
+	}
+	src := fmt.Sprintf(`//go:build %s && %s && sometag
+
+package buildutil
+
+const FooBar = 1
+`, goarch, goos)
+	filename := fmt.Sprintf("x_%s_%s.go", goos, goarch)
+	// data, err := ioutil.ReadFile("buildutil.go")
+	// if err != nil {
+	// 	b.Fatal(err)
+	// }
+	data := []byte(src)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := MatchContext(nil, filename, data); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkFixGOPATH(b *testing.B) {
 	wd, err := os.Getwd()
 	if err != nil {
