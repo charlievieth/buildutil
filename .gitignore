@@ -1,2 +1,7 @@
 /genplatforms
 /vendor
+/bin
+*.test
+*.exe
+cpu*.out
+mem*.out
